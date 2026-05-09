@@ -96,7 +96,7 @@ function scheduleBotTick(io: IO, room: Room) {
 }
 
 function makeBotName(usedNames: Set<string>): string {
-  const pool = ['Maggie', 'Giles', 'Gay Brian', 'Carbonic Jim'];
+  const pool = ['Maggie', 'Giles', 'Gabe Ryan', 'Carbonic Jim'];
   for (const n of pool) {
     if (!usedNames.has(n)) return n;
   }
