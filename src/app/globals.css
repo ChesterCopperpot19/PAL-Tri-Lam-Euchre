@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body, #__next { height: 100%; }
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  /* Anchored on Pitt Royal #003594 — darkenings of the same hue, no
+     Heritage Navy. Top: full Pitt Royal; edge: very dark Pitt Royal. */
+  background:
+    radial-gradient(ellipse at top, #003594 0%, #001a4d 55%, #00081f 100%);
+  color: #f5f1e8;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Felt table — Pitt Royal Blue with gold trim. */
+.felt {
+  background:
+    radial-gradient(ellipse at center, #1f4ea3 0%, #003594 40%, #001f5c 75%, #001640 100%);
+  border-radius: 9999px;
+  box-shadow:
+    inset 0 0 0 6px #FFB81C,
+    inset 0 0 0 12px #1c1208,
+    inset 0 0 80px rgba(0,0,0,0.55),
+    0 30px 60px rgba(0,0,0,0.55);
+}
+
+/* Card aesthetics. */
+.card-face {
+  background: linear-gradient(180deg, #fdfcf7 0%, #f3eedd 100%);
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 8px;
+}
+.card-back {
+  background:
+    repeating-linear-gradient(45deg, #001f5c 0 6px, #002b71 6px 12px),
+    #001f5c;
+  border: 2px solid #FFB81C;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 2px #001f5c;
+}
+.card-base {
+  width: 70px;
+  height: 100px;
+  user-select: none;
+  position: relative;
+}
+@media (max-width: 640px) {
+  .card-base { width: 56px; height: 80px; }
+}
+
+.legal-glow {
+  box-shadow: 0 0 0 3px #FFB81C, 0 6px 18px rgba(255,184,28,0.4);
+  transform: translateY(-6px);
+}
+.illegal-dim { opacity: 0.55; filter: grayscale(0.4); }
+
+.turn-ring { box-shadow: 0 0 0 3px #FFB81C; }
+
+/* All non-essential motion is gated on prefers-reduced-motion: no-preference.
+ * For users who request reduced motion (WCAG 2.3.3), we fall back to a
+ * static fade so the trick still visibly leaves the table without movement. */
+@media (prefers-reduced-motion: no-preference) {
+  .fade-in { animation: fadeIn 200ms ease-out both; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Cards fly toward the winning player's seat once a trick is taken. */
+  @keyframes trickFlyTop    { to { transform: translate(0, -260px) scale(0.55); opacity: 0; } }
+  @keyframes trickFlyBottom { to { transform: translate(0,  260px) scale(0.55); opacity: 0; } }
+  @keyframes trickFlyLeft   { to { transform: translate(-260px, 0) scale(0.55); opacity: 0; } }
+  @keyframes trickFlyRight  { to { transform: translate( 260px, 0) scale(0.55); opacity: 0; } }
+  .trick-fly-top    { animation: trickFlyTop    750ms cubic-bezier(.45,.6,.2,1) forwards; }
+  .trick-fly-bottom { animation: trickFlyBottom 750ms cubic-bezier(.45,.6,.2,1) forwards; }
+  .trick-fly-left   { animation: trickFlyLeft   750ms cubic-bezier(.45,.6,.2,1) forwards; }
+  .trick-fly-right  { animation: trickFlyRight  750ms cubic-bezier(.45,.6,.2,1) forwards; }
+
+  /* Brief flash on the winning seat. */
+  @keyframes seatWinFlash {
+    0%   { box-shadow: 0 0 0 0 rgba(255,184,28,0.9); }
+    60%  { box-shadow: 0 0 0 18px rgba(255,184,28,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,184,28,0); }
+  }
+  .seat-win-flash { animation: seatWinFlash 900ms ease-out 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Static equivalents — no movement, just visual state changes. */
+  .fade-in { opacity: 1; }
+  .trick-fly-top, .trick-fly-bottom, .trick-fly-left, .trick-fly-right {
+    transition: opacity 350ms ease-out;
+    opacity: 0;
+  }
+  .seat-win-flash {
+    box-shadow: 0 0 0 3px rgba(255,184,28,0.9);
+    transition: box-shadow 600ms ease-out;
+  }
+}
+
+/* Pitt gold accents. */
+.text-gold { color: #FFB81C; }
+.bg-gold { background-color: #FFB81C; }
+.border-gold { border-color: #FFB81C; }
+.text-pitt-blue { color: #003594; }
+.bg-pitt-blue { background-color: #003594; }
+.border-pitt-blue { border-color: #003594; }
+
+/* Scrollbar polish. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
