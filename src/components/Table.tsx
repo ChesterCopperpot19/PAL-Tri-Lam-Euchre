@@ -14,6 +14,7 @@ import GameOver from './GameOver';
 import type { RoomSnapshot, ChatMessage } from '@/lib/shared-types';
 import type { SeatIndex, Suit } from '@/server/engine/types';
 import { teamName, tricksBySeat } from '@/lib/format';
+import { sortHand } from '@/lib/hand-sort';
 import Chat from './Chat';
 
 type Handlers = {
@@ -58,7 +59,10 @@ export default function Table({
 
   const memberAt = (s: SeatIndex) => snapshot.members.find((m) => m.seat === s);
 
-  const myHand = viewerSeat !== null ? state.seats[viewerSeat].hand ?? [] : [];
+  const myHand =
+    viewerSeat !== null
+      ? sortHand(state.seats[viewerSeat].hand ?? [], state.trump)
+      : [];
   const myTurn = viewerSeat !== null && state.turn === viewerSeat;
   const meIsDealer = viewerSeat !== null && state.dealer === viewerSeat;
   const tricksPerSeat = tricksBySeat(state.completedTricks);
