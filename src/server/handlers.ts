@@ -5,6 +5,7 @@ import { redactState } from './engine/redact';
 import { roomManager, Room } from './rooms';
 import {
   ClientToServerEvents,
+  RoomListEntry,
   RoomSnapshot,
   ServerToClientEvents,
 } from '@/lib/shared-types';
@@ -129,8 +130,35 @@ function getSeatedSession(
   return { ...ctx, seat };
 }
 
+function listRooms(): RoomListEntry[] {
+  return roomManager.list().map((room) => {
+    const members = roomManager.members(room).map((m) => ({
+      name: m.name,
+      seat: m.seat,
+      isBot: m.isBot,
+    }));
+    const seated = members.filter((m) => m.seat !== null);
+    return {
+      code: room.code,
+      phase: room.state.phase,
+      members,
+      seatedCount: seated.length,
+      full: seated.length === 4,
+      spectatorCount: room.spectators.length,
+    };
+  });
+}
+
 export function attachHandlers(io: IO) {
   io.on('connection', (socket: S) => {
+    socket.on('rooms:list', (ack) => {
+      try {
+        ack(listRooms());
+      } catch (e) {
+        ack([]);
+      }
+    });
+
     socket.on('room:join', (payload, ack) => {
       try {
         const code = (payload.code || '').toUpperCase().trim();

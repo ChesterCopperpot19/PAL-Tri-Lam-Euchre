@@ -43,32 +43,52 @@ export default function RoomPage() {
       setChat((cur) => [...cur, m].slice(-200));
     }
 
+    // Join (or re-join) the room. Called once on mount AND every time the socket
+    // reconnects — fixes mobile background-tab disconnects, where the host
+    // wouldn't see a new player join until refresh.
+    function joinRoom(isReconnect: boolean) {
+      socket.emit(
+        'room:join',
+        {
+          code,
+          name: name || 'Player',
+          playerId: playerId!,
+          asSpectator: role === 'spectate',
+        },
+        (res) => {
+          if (!isReconnect) setJoining(false);
+          if (!res.ok) {
+            if (!isReconnect) setJoinFailed(res.error);
+            return;
+          }
+          setSnapshot(res.snapshot);
+        }
+      );
+    }
+
     socket.on('room:snapshot', onSnap);
     socket.on('room:error', onErr);
     socket.on('chat:msg', onMsg);
+    socket.on('connect', () => joinRoom(true));
 
-    socket.emit(
-      'room:join',
-      {
-        code,
-        name: name || 'Player',
-        playerId,
-        asSpectator: role === 'spectate',
-      },
-      (res) => {
-        setJoining(false);
-        if (!res.ok) {
-          setJoinFailed(res.error);
-          return;
-        }
-        setSnapshot(res.snapshot);
+    joinRoom(false);
+
+    // When the tab becomes visible again (mobile lock/unlock, app switch),
+    // refresh the snapshot in case we missed any events while backgrounded.
+    function onVisibility() {
+      if (document.visibilityState === 'visible') {
+        if (!socket.connected) socket.connect();
+        else joinRoom(true);
       }
-    );
+    }
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       socket.off('room:snapshot', onSnap);
       socket.off('room:error', onErr);
       socket.off('chat:msg', onMsg);
+      socket.off('connect');
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [code, playerId, name, role]);
 

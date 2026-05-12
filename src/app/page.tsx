@@ -4,6 +4,17 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useDisplayName, usePlayerId } from '@/lib/usePlayerId';
 import { getSocket } from '@/lib/socket-client';
+import type { RoomListEntry } from '@/lib/shared-types';
+
+const PHASE_LABEL: Record<string, string> = {
+  LOBBY: 'Lobby',
+  BIDDING_1: 'Bidding',
+  BIDDING_2: 'Bidding',
+  DEALER_DISCARD: 'Bidding',
+  PLAYING: 'In play',
+  HAND_END: 'Between hands',
+  GAME_OVER: 'Finishing',
+};
 
 export default function LandingPage() {
   const router = useRouter();
@@ -12,6 +23,7 @@ export default function LandingPage() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<RoomListEntry[]>([]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -19,6 +31,22 @@ export default function LandingPage() {
       const c = url.searchParams.get('code');
       if (c) setCode(c.toUpperCase());
     }
+  }, []);
+
+  // Poll for in-progress rooms every 4 seconds so the landing page stays current.
+  useEffect(() => {
+    const socket = getSocket();
+    let cancelled = false;
+    const refresh = () =>
+      socket.emit('rooms:list', (list) => {
+        if (!cancelled) setRooms(list);
+      });
+    refresh();
+    const id = setInterval(refresh, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
   function go(asSpectator: boolean, joinCode: string | null) {
@@ -51,8 +79,12 @@ export default function LandingPage() {
     );
   }
 
+  function joinListed(roomCode: string, asSpectator: boolean) {
+    go(asSpectator, roomCode);
+  }
+
   return (
-    <main className="min-h-screen flex items-center justify-center px-4 py-10">
+    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-10 gap-6">
       <div className="w-full max-w-md bg-black/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur shadow-2xl">
         <div className="text-[11px] uppercase tracking-[0.35em] text-white/50">
           Welcome to the
@@ -126,6 +158,66 @@ export default function LandingPage() {
           </ul>
         </details>
       </div>
+
+      {rooms.length > 0 && (
+        <div className="w-full max-w-md bg-black/30 border border-white/10 rounded-2xl p-4 sm:p-6 backdrop-blur shadow-xl">
+          <div className="text-[11px] uppercase tracking-[0.3em] text-white/60 mb-2">
+            Games in progress
+          </div>
+          <div className="space-y-2">
+            {rooms.map((r) => {
+              const playerNames = r.members
+                .filter((m) => m.seat !== null)
+                .map((m) => m.name);
+              const canJoin = !r.full && r.phase === 'LOBBY';
+              return (
+                <div
+                  key={r.code}
+                  className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-lg px-3 py-2"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="font-display text-gold tracking-widest">
+                        {r.code}
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider bg-white/10 text-white/80 rounded px-1.5 py-0.5">
+                        {PHASE_LABEL[r.phase] ?? r.phase}
+                      </span>
+                      <span className="text-xs text-white/60">
+                        {r.seatedCount}/4
+                        {r.spectatorCount > 0 && ` · 👁 ${r.spectatorCount}`}
+                      </span>
+                    </div>
+                    <div className="text-xs text-white/70 truncate mt-0.5">
+                      {playerNames.length ? playerNames.join(', ') : 'No players yet'}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    {canJoin && (
+                      <button
+                        disabled={busy || !name.trim()}
+                        onClick={() => joinListed(r.code, false)}
+                        className="text-xs bg-pitt-blue hover:bg-[#1f4ea3] rounded-md px-2.5 py-1.5 font-medium disabled:opacity-40"
+                        title={!name.trim() ? 'Enter a name first' : 'Join this game'}
+                      >
+                        Join
+                      </button>
+                    )}
+                    <button
+                      disabled={busy || !name.trim()}
+                      onClick={() => joinListed(r.code, true)}
+                      className="text-xs bg-white/10 hover:bg-white/20 border border-white/15 rounded-md px-2.5 py-1.5 font-medium disabled:opacity-40"
+                      title={!name.trim() ? 'Enter a name first' : 'Watch this game'}
+                    >
+                      👁 Watch
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -33,6 +33,24 @@ export type ChatMessage = {
   ts: number;
 };
 
+/** Public summary of a room shown on the landing page. */
+export type RoomListEntry = {
+  code: string;
+  /** 'LOBBY' | 'BIDDING_1' | 'BIDDING_2' | 'DEALER_DISCARD' | 'PLAYING' | 'HAND_END' | 'GAME_OVER' */
+  phase: string;
+  /** Public member list — names + seat + bot flag. No hands or other private info. */
+  members: Array<{
+    name: string;
+    seat: 0 | 1 | 2 | 3 | null;
+    isBot: boolean;
+  }>;
+  /** Count of currently seated players (humans + bots). */
+  seatedCount: number;
+  /** True if all 4 seats are filled. */
+  full: boolean;
+  spectatorCount: number;
+};
+
 // ---------- client → server ----------
 export type ClientToServerEvents = {
   'room:join': (
@@ -46,6 +64,9 @@ export type ClientToServerEvents = {
   'room:addBot': (payload: { seat?: 0 | 1 | 2 | 3 }) => void;
   'room:removeBot': (payload: { seat: 0 | 1 | 2 | 3 }) => void;
   'room:fillBots': () => void;
+  'rooms:list': (
+    ack: (rooms: RoomListEntry[]) => void
+  ) => void;
   'bid:order': (payload: { alone: boolean }) => void;
   'bid:pass': () => void;
   'bid:call': (payload: { suit: 'H' | 'D' | 'C' | 'S'; alone: boolean }) => void;
