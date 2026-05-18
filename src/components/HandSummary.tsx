@@ -1,4 +1,5 @@
 'use client';
+import { useEffect, useState } from 'react';
 import { SuitGlyph } from './Card';
 import type { HandSummary as HS, SeatIndex } from '@/server/engine/types';
 import { TEAM_OF } from '@/server/engine/types';
@@ -11,15 +12,20 @@ export default function HandSummary({
   summary,
   members,
   myId,
-  isHost,
-  onNext,
 }: {
   summary: HS;
   members: RoomMember[];
   myId: string;
-  isHost: boolean;
-  onNext: () => void;
 }) {
+  // 3-second countdown until server auto-advances to the next hand.
+  const [secondsLeft, setSecondsLeft] = useState(3);
+  useEffect(() => {
+    setSecondsLeft(3);
+    const id = setInterval(() => {
+      setSecondsLeft((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [summary]);
   const makerName =
     members.find((m) => m.seat === summary.maker)?.name ?? SEAT_NAME[summary.maker];
 
@@ -110,14 +116,10 @@ export default function HandSummary({
           </div>
         </div>
 
-        <button
-          onClick={onNext}
-          disabled={!isHost}
-          className="w-full bg-gold text-black font-semibold rounded-lg py-2.5 hover:brightness-110 disabled:opacity-50"
-          title={!isHost ? 'Waiting for host…' : ''}
-        >
-          {isHost ? 'Deal next hand' : 'Waiting for host…'}
-        </button>
+        <div className="text-center text-sm text-white/70 py-2">
+          Next hand in{' '}
+          <span className="font-display text-gold text-lg">{secondsLeft}</span>…
+        </div>
       </div>
     </div>
   );

@@ -149,6 +149,7 @@ export default function RoomPage() {
           onAddBot={(seat) => socket.emit('room:addBot', { seat })}
           onFillBots={() => socket.emit('room:fillBots')}
           onRemoveBot={(seat) => socket.emit('room:removeBot', { seat })}
+          onMoveSeat={(seat) => socket.emit('room:moveSeat', { seat })}
         />
       ) : (
         <Table snapshot={snapshot} myId={playerId} chat={chat} handlers={handlers} />

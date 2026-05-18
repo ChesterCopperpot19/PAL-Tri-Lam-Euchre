@@ -319,8 +319,6 @@ export default function Table({
           summary={state.lastHand}
           members={snapshot.members}
           myId={myId}
-          isHost={isHost}
-          onNext={handlers.onNextHand}
         />
       )}
       {state.phase === 'GAME_OVER' && (

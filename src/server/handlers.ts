@@ -47,6 +47,32 @@ function broadcast(io: IO, room: Room) {
   }
   // Possibly schedule a bot move.
   scheduleBotTick(io, room);
+  // Auto-advance from HAND_END after the score has been shown.
+  scheduleAutoNextHand(io, room);
+}
+
+const HAND_END_AUTO_DELAY_MS = 3000;
+
+function scheduleAutoNextHand(io: IO, room: Room) {
+  if (room.handEndTimer) {
+    clearTimeout(room.handEndTimer);
+    room.handEndTimer = null;
+  }
+  if (room.state.phase !== 'HAND_END') return;
+  room.handEndTimer = setTimeout(() => {
+    room.handEndTimer = null;
+    if (!roomManager.get(room.code)) return; // room gone
+    if (room.state.phase !== 'HAND_END') return; // already advanced
+    try {
+      const { state, events } = applyAction(room.state, { type: 'START_HAND' });
+      room.state = state;
+      events.forEach((e) => io.to(room.code).emit('room:event', e));
+      broadcast(io, room);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(`auto-next-hand failed in room ${room.code}:`, (e as Error).message);
+    }
+  }, HAND_END_AUTO_DELAY_MS);
 }
 
 const BOT_DELAY_MS = 700;
@@ -308,6 +334,23 @@ export function attachHandlers(io: IO) {
         isBot: true,
       };
     }
+
+    socket.on('room:moveSeat', ({ seat: targetSeat }) => {
+      const ctx = getSessionRoom(socket);
+      if (!ctx) return err(socket, 'not in a room');
+      const { room, sess } = ctx;
+      if (room.state.phase !== 'LOBBY')
+        return err(socket, 'cannot change seats mid-game');
+      if (targetSeat < 0 || targetSeat > 3) return err(socket, 'invalid seat');
+      const currentSeat = roomManager.findSeat(room, sess.playerId);
+      if (currentSeat == null) return err(socket, 'spectators cannot move seats');
+      if (currentSeat === targetSeat) return; // no-op
+      if (room.seats[targetSeat]) return err(socket, 'seat is taken');
+      const seatData = room.seats[currentSeat]!;
+      room.seats[targetSeat] = seatData;
+      room.seats[currentSeat] = null;
+      broadcast(io, room);
+    });
 
     socket.on('room:addBot', ({ seat }) => {
       const ctx = getSessionRoom(socket);

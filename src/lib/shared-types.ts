@@ -61,6 +61,7 @@ export type ClientToServerEvents = {
   'room:start': () => void;
   'room:nextHand': () => void;
   'room:promote': (payload: { playerId: string; seat: 0 | 1 | 2 | 3 }) => void;
+  'room:moveSeat': (payload: { seat: 0 | 1 | 2 | 3 }) => void;
   'room:addBot': (payload: { seat?: 0 | 1 | 2 | 3 }) => void;
   'room:removeBot': (payload: { seat: 0 | 1 | 2 | 3 }) => void;
   'room:fillBots': () => void;

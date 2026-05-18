@@ -12,6 +12,7 @@ export default function Lobby({
   onAddBot,
   onFillBots,
   onRemoveBot,
+  onMoveSeat,
 }: {
   snapshot: RoomSnapshot;
   myId: string;
@@ -20,6 +21,7 @@ export default function Lobby({
   onAddBot: (seat: 0 | 1 | 2 | 3) => void;
   onFillBots: () => void;
   onRemoveBot: (seat: 0 | 1 | 2 | 3) => void;
+  onMoveSeat: (seat: 0 | 1 | 2 | 3) => void;
 }) {
   const isHost = snapshot.hostPlayerId === myId;
   const meSeat = snapshot.members.find((m) => m.playerId === myId)?.seat ?? null;
@@ -81,13 +83,22 @@ export default function Lobby({
                     <span className="text-white/40 italic">empty</span>
                   )}
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-wrap justify-end">
                   {m?.isBot && isHost && (
                     <button
                       onClick={() => onRemoveBot(i as 0 | 1 | 2 | 3)}
                       className="text-[10px] uppercase tracking-wider text-white/60 hover:text-red-300 border border-white/15 rounded px-1.5 py-0.5"
                     >
                       Remove
+                    </button>
+                  )}
+                  {!m && meSeat !== null && meSeat !== i && (
+                    <button
+                      onClick={() => onMoveSeat(i as 0 | 1 | 2 | 3)}
+                      className="text-[10px] uppercase tracking-wider bg-gold/90 hover:bg-gold text-black rounded px-1.5 py-0.5"
+                      title="Move yourself to this seat"
+                    >
+                      Sit here
                     </button>
                   )}
                   {!m && isHost && (

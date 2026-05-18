@@ -31,6 +31,8 @@ export type Room = {
   createdAt: number;
   /** Bot tick timer (null when no bot move pending). */
   botTimer: NodeJS.Timeout | null;
+  /** Auto-advance timer used in the HAND_END phase. */
+  handEndTimer: NodeJS.Timeout | null;
 };
 
 const DISCONNECT_GRACE_MS = 60_000;
@@ -68,6 +70,7 @@ export class RoomManager {
       rateLimit: new Map(),
       createdAt: Date.now(),
       botTimer: null,
+      handEndTimer: null,
     };
     this.rooms.set(code, room);
     return room;
