@@ -2,7 +2,13 @@
  * Run via `tsx server.ts` (configured in package.json scripts).
  */
 import { createServer } from 'http';
+import { loadEnvConfig } from '@next/env';
 import next from 'next';
+
+// Load .env* into process.env before anything reads it (e.g. DATABASE_URL for
+// the stats store). On Render the env var is injected directly; locally this
+// picks it up from .env. Safe to call early — the DB pool is created lazily.
+loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production');
 import { Server as IOServer } from 'socket.io';
 import { attachHandlers } from './src/server/handlers';
 import type {

@@ -58,7 +58,12 @@ function broadcast(io: IO, room: Room) {
   if (room.state.phase === 'GAME_OVER' && !room.statsRecorded) {
     room.statsRecorded = true;
     try {
-      recordMatch(buildMatchRecord(room));
+      const record = buildMatchRecord(room);
+      // Fire-and-forget: persistence shouldn't block the broadcast.
+      recordMatch(record).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.error('failed to persist match:', (e as Error).message);
+      });
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('failed to build match record:', (e as Error).message);
@@ -310,9 +315,9 @@ export function attachHandlers(io: IO) {
       }
     });
 
-    socket.on('stats:get', (ack) => {
+    socket.on('stats:get', async (ack) => {
       try {
-        const all = getMatches();
+        const all = await getMatches();
         const recent = all.slice().reverse(); // most recent first
         ack({
           matches: recent.slice(0, 50),
@@ -320,6 +325,8 @@ export function attachHandlers(io: IO) {
           totalMatches: all.length,
         });
       } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('stats:get failed:', (e as Error).message);
         ack({ matches: [], players: [], totalMatches: 0 });
       }
     });
