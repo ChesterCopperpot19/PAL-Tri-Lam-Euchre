@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { getSocket, disconnectSocket } from '@/lib/socket-client';
+import { getSocket } from '@/lib/socket-client';
 import { useDisplayName, usePlayerId } from '@/lib/usePlayerId';
 import type { ChatMessage, RoomSnapshot } from '@/lib/shared-types';
 import Lobby from '@/components/Lobby';
@@ -127,7 +127,11 @@ export default function RoomPage() {
     onChat: (text: string) => socket.emit('chat:send', { text }),
     onNextHand: () => socket.emit('room:nextHand'),
     onLeave: () => {
-      disconnectSocket();
+      // Tell the server we're intentionally leaving so it cleans the room up
+      // immediately (no 60s grace, and bot-only rooms get deleted). The server
+      // disconnects us after processing, so we just emit then navigate — letting
+      // the emit flush instead of racing it with a client-side disconnect.
+      socket.emit('room:leave');
       router.push('/');
     },
   };
@@ -150,6 +154,7 @@ export default function RoomPage() {
           onFillBots={() => socket.emit('room:fillBots')}
           onRemoveBot={(seat) => socket.emit('room:removeBot', { seat })}
           onMoveSeat={(seat) => socket.emit('room:moveSeat', { seat })}
+          onLeave={handlers.onLeave}
         />
       ) : (
         <Table snapshot={snapshot} myId={playerId} chat={chat} handlers={handlers} />

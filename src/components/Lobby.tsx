@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import type { RoomMember, RoomSnapshot } from '@/lib/shared-types';
 
 const SEAT_LABEL = ['South (you)', 'West', 'North', 'East'] as const;
@@ -13,6 +14,7 @@ export default function Lobby({
   onFillBots,
   onRemoveBot,
   onMoveSeat,
+  onLeave,
 }: {
   snapshot: RoomSnapshot;
   myId: string;
@@ -22,7 +24,9 @@ export default function Lobby({
   onFillBots: () => void;
   onRemoveBot: (seat: 0 | 1 | 2 | 3) => void;
   onMoveSeat: (seat: 0 | 1 | 2 | 3) => void;
+  onLeave: () => void;
 }) {
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const isHost = snapshot.hostPlayerId === myId;
   const meSeat = snapshot.members.find((m) => m.playerId === myId)?.seat ?? null;
 
@@ -41,6 +45,15 @@ export default function Lobby({
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-6">
+      <div className="flex justify-end">
+        <button
+          onClick={() => setConfirmLeave(true)}
+          className="text-xs text-white/60 hover:text-white border border-white/15 rounded-lg px-3 py-1.5"
+        >
+          Leave game
+        </button>
+      </div>
+
       <div className="text-center">
         <div className="text-xs uppercase tracking-[0.3em] text-white/60">Room</div>
         <h2 className="font-display text-5xl tracking-widest text-gold">{snapshot.code}</h2>
@@ -51,6 +64,32 @@ export default function Lobby({
           </code>
         </p>
       </div>
+
+      {confirmLeave && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+          <div className="bg-[#00133d] border border-gold/40 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+            <div className="font-display text-2xl text-gold">Quit this game?</div>
+            <p className="text-sm text-white/75">
+              Leaving will close the room and remove any bots. The game will no longer
+              show on the home page.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmLeave(false)}
+                className="flex-1 bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg py-2.5 font-medium"
+              >
+                Stay
+              </button>
+              <button
+                onClick={onLeave}
+                className="flex-1 bg-gold text-black font-semibold rounded-lg py-2.5 hover:brightness-110"
+              >
+                Quit game
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         {[0, 1, 2, 3].map((i) => {

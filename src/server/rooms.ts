@@ -153,11 +153,19 @@ export class RoomManager {
               room.seats[i] = null;
               if (room.hostPlayerId === seat.playerId) {
                 const next =
-                  room.seats.find((s) => s)?.playerId ?? room.spectators[0]?.playerId ?? '';
+                  room.seats.find((s) => s && !s.isBot)?.playerId ??
+                  room.spectators[0]?.playerId ??
+                  '';
                 room.hostPlayerId = next;
               }
               onChange(room);
-              if (room.seats.every((s) => !s) && room.spectators.length === 0) {
+              // Bots alone don't keep a room alive — delete it if no connected
+              // humans (and no spectators) remain, so it stops showing on the
+              // home page as an open game.
+              const connectedHumans = room.seats.filter(
+                (s) => s && !s.isBot && s.socketId
+              ).length;
+              if (connectedHumans === 0 && room.spectators.length === 0) {
                 this.delete(room.code);
               }
             }

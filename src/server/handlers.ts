@@ -157,22 +157,32 @@ function getSeatedSession(
 }
 
 function listRooms(): RoomListEntry[] {
-  return roomManager.list().map((room) => {
-    const members = roomManager.members(room).map((m) => ({
-      name: m.name,
-      seat: m.seat,
-      isBot: m.isBot,
-    }));
-    const seated = members.filter((m) => m.seat !== null);
-    return {
-      code: room.code,
-      phase: room.state.phase,
-      members,
-      seatedCount: seated.length,
-      full: seated.length === 4,
-      spectatorCount: room.spectators.length,
-    };
-  });
+  return roomManager
+    .list()
+    // Only show rooms that have at least one connected human (or a spectator) —
+    // a room left with only bots is effectively abandoned.
+    .filter((room) => {
+      const connectedHumans = room.seats.filter(
+        (s) => s && !s.isBot && s.socketId
+      ).length;
+      return connectedHumans > 0 || room.spectators.length > 0;
+    })
+    .map((room) => {
+      const members = roomManager.members(room).map((m) => ({
+        name: m.name,
+        seat: m.seat,
+        isBot: m.isBot,
+      }));
+      const seated = members.filter((m) => m.seat !== null);
+      return {
+        code: room.code,
+        phase: room.state.phase,
+        members,
+        seatedCount: seated.length,
+        full: seated.length === 4,
+        spectatorCount: room.spectators.length,
+      };
+    });
 }
 
 export function attachHandlers(io: IO) {
@@ -486,6 +496,31 @@ export function attachHandlers(io: IO) {
     });
 
     socket.on('room:leave', () => {
+      // Intentional leave: remove the player immediately (no reconnect grace).
+      const ctx = getSessionRoom(socket);
+      if (ctx) {
+        const { room, sess } = ctx;
+        const seat = roomManager.findSeat(room, sess.playerId);
+        if (seat != null) room.seats[seat] = null;
+        room.spectators = room.spectators.filter((sp) => sp.playerId !== sess.playerId);
+        // Hand off host to a remaining human if needed.
+        if (room.hostPlayerId === sess.playerId) {
+          room.hostPlayerId =
+            room.seats.find((s) => s && !s.isBot)?.playerId ??
+            room.spectators[0]?.playerId ??
+            '';
+        }
+        // A room with only bots (or nobody) left should not linger on the
+        // home page — delete it so it stops showing as "in progress".
+        const connectedHumans = room.seats.filter(
+          (s) => s && !s.isBot && s.socketId
+        ).length;
+        if (connectedHumans === 0 && room.spectators.length === 0) {
+          roomManager.delete(room.code);
+        } else {
+          broadcast(io, room);
+        }
+      }
       sessions.delete(socket.id);
       socket.disconnect(true);
     });
