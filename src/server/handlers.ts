@@ -5,10 +5,15 @@ import { redactState } from './engine/redact';
 import { roomManager, Room } from './rooms';
 import {
   ClientToServerEvents,
+  MatchRecord,
+  PlayerAllTime,
+  PlayerMatchStat,
   RoomListEntry,
   RoomSnapshot,
   ServerToClientEvents,
 } from '@/lib/shared-types';
+import { TEAM_OF, type SeatIndex } from './engine/types';
+import { getMatches, recordMatch } from './stats-store';
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents>;
 type S = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -49,9 +54,119 @@ function broadcast(io: IO, room: Room) {
   scheduleBotTick(io, room);
   // Auto-advance from HAND_END after the score has been shown.
   scheduleAutoNextHand(io, room);
+  // Record the finished game for all-time stats (exactly once).
+  if (room.state.phase === 'GAME_OVER' && !room.statsRecorded) {
+    room.statsRecorded = true;
+    try {
+      recordMatch(buildMatchRecord(room));
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('failed to build match record:', (e as Error).message);
+    }
+  }
 }
 
-const HAND_END_AUTO_DELAY_MS = 3000;
+const SEAT_FALLBACK = ['South', 'West', 'North', 'East'] as const;
+
+/** Build a MatchRecord from a finished room's per-hand history. */
+function buildMatchRecord(room: Room): MatchRecord {
+  const history = room.state.history;
+  const players: PlayerMatchStat[] = ([0, 1, 2, 3] as SeatIndex[]).map((seat) => {
+    const seatData = room.seats[seat];
+    const team = TEAM_OF[seat];
+    let tricks = 0;
+    let defensiveTricks = 0;
+    let handsCalled = 0;
+    let callsWon = 0;
+    let euchres = 0;
+    let marches = 0;
+    let loneCalled = 0;
+    let loneWon = 0;
+    for (const h of history) {
+      const t = h.tricksBySeat[seat] ?? 0;
+      tricks += t;
+      if (h.maker === seat) {
+        handsCalled++;
+        if (!h.euchred) callsWon++;
+        else euchres++;
+        if (h.march && !h.euchred) marches++;
+        if (h.alone) {
+          loneCalled++;
+          if (!h.euchred) loneWon++;
+        }
+      } else {
+        defensiveTricks += t;
+      }
+    }
+    return {
+      name: seatData?.name ?? SEAT_FALLBACK[seat],
+      seat,
+      team,
+      isBot: seatData?.isBot ?? false,
+      tricks,
+      defensiveTricks,
+      handsCalled,
+      callsWon,
+      euchres,
+      marches,
+      loneCalled,
+      loneWon,
+    };
+  });
+  const winnerTeam = room.state.scores.NS > room.state.scores.EW ? 'NS' : 'EW';
+  return {
+    id: `${Date.now()}-${room.code}`,
+    ts: Date.now(),
+    winnerTeam,
+    finalScore: { ...room.state.scores },
+    handsPlayed: history.length,
+    players,
+  };
+}
+
+/** Aggregate all-time stats across matches — humans only, sorted by wins. */
+function aggregatePlayers(matches: MatchRecord[]): PlayerAllTime[] {
+  const map = new Map<string, PlayerAllTime>();
+  for (const m of matches) {
+    for (const p of m.players) {
+      if (p.isBot) continue; // all-time leaderboard is humans only
+      const key = p.name.trim();
+      if (!key) continue;
+      let agg = map.get(key);
+      if (!agg) {
+        agg = {
+          name: key,
+          games: 0,
+          wins: 0,
+          tricks: 0,
+          defensiveTricks: 0,
+          handsCalled: 0,
+          callsWon: 0,
+          euchres: 0,
+          marches: 0,
+          loneCalled: 0,
+          loneWon: 0,
+        };
+        map.set(key, agg);
+      }
+      agg.games++;
+      if (p.team === m.winnerTeam) agg.wins++;
+      agg.tricks += p.tricks;
+      agg.defensiveTricks += p.defensiveTricks;
+      agg.handsCalled += p.handsCalled;
+      agg.callsWon += p.callsWon;
+      agg.euchres += p.euchres;
+      agg.marches += p.marches;
+      agg.loneCalled += p.loneCalled;
+      agg.loneWon += p.loneWon;
+    }
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => b.wins - a.wins || b.games - a.games || b.tricks - a.tricks
+  );
+}
+
+const HAND_END_AUTO_DELAY_MS = 6000;
 
 function scheduleAutoNextHand(io: IO, room: Room) {
   if (room.handEndTimer) {
@@ -192,6 +307,20 @@ export function attachHandlers(io: IO) {
         ack(listRooms());
       } catch (e) {
         ack([]);
+      }
+    });
+
+    socket.on('stats:get', (ack) => {
+      try {
+        const all = getMatches();
+        const recent = all.slice().reverse(); // most recent first
+        ack({
+          matches: recent.slice(0, 50),
+          players: aggregatePlayers(all),
+          totalMatches: all.length,
+        });
+      } catch (e) {
+        ack({ matches: [], players: [], totalMatches: 0 });
       }
     });
 

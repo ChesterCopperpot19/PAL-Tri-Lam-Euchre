@@ -67,7 +67,7 @@ export default function PlayerSeat({
           </span>
         )}
         {sittingOut && (
-          <span className="text-[10px] uppercase tracking-wider bg-white/30 text-black rounded px-1.5 py-0.5">
+          <span className="text-[10px] uppercase tracking-wider bg-violet-500 text-white rounded px-1.5 py-0.5 font-semibold">
             Sitting Out
           </span>
         )}
@@ -82,7 +82,7 @@ export default function PlayerSeat({
       </div>
       <div className={`flex ${fanOrient} gap-[-30px]`} style={{ minWidth: 60, minHeight: 60 }}>
         {handCount > 0 ? (
-          <div className="relative">
+          <div className={`relative ${sittingOut ? 'opacity-30 grayscale' : ''}`}>
             <CardBack size={cardSize} count={handCount} />
           </div>
         ) : (

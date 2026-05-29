@@ -33,6 +33,8 @@ export type Room = {
   botTimer: NodeJS.Timeout | null;
   /** Auto-advance timer used in the HAND_END phase. */
   handEndTimer: NodeJS.Timeout | null;
+  /** Guards against recording the same finished game more than once. */
+  statsRecorded: boolean;
 };
 
 const DISCONNECT_GRACE_MS = 60_000;
@@ -71,6 +73,7 @@ export class RoomManager {
       createdAt: Date.now(),
       botTimer: null,
       handEndTimer: null,
+      statsRecorded: false,
     };
     this.rooms.set(code, room);
     return room;

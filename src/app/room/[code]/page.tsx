@@ -40,7 +40,12 @@ export default function RoomPage() {
       setTimeout(() => setErrorBanner((cur) => (cur === msg ? null : cur)), 4000);
     }
     function onMsg(m: ChatMessage) {
-      setChat((cur) => [...cur, m].slice(-200));
+      // Dedupe by id — the server replays the full chat log on every (re)join,
+      // so without this, reconnects would repeat every message.
+      setChat((cur) => {
+        if (cur.some((c) => c.id === m.id)) return cur;
+        return [...cur, m].slice(-200);
+      });
     }
 
     // Join (or re-join) the room. Called once on mount AND every time the socket

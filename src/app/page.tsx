@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useDisplayName, usePlayerId } from '@/lib/usePlayerId';
@@ -145,6 +146,13 @@ export default function LandingPage() {
         </div>
 
         {error && <div className="mt-4 text-red-300 text-sm">{error}</div>}
+
+        <Link
+          href="/stats"
+          className="mt-4 block text-center text-sm bg-white/5 hover:bg-white/10 border border-white/15 rounded-lg py-2.5 font-medium text-gold"
+        >
+          📊 All-time stats
+        </Link>
 
         <details className="mt-6 text-sm text-white/70">
           <summary className="cursor-pointer hover:text-white">House rules</summary>

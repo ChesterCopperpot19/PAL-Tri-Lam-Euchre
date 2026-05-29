@@ -6,6 +6,7 @@ import PlayerSeat from './PlayerSeat';
 import TrickArea, { type PendingTrick } from './TrickArea';
 import TrumpIndicator from './TrumpIndicator';
 import TrumpBanner from './TrumpBanner';
+import TrumpBadge from './TrumpBadge';
 import ScoreBoard from './ScoreBoard';
 import BiddingPanel from './BiddingPanel';
 import DiscardPanel from './DiscardPanel';
@@ -76,6 +77,17 @@ export default function Table({
   const dealerMember = snapshot.members.find((m) => m.seat === state.dealer);
   const dealerName = dealerMember?.name ?? 'Dealer';
   const turnName = turnMember?.name ?? '...';
+
+  // Going-alone state
+  const isAlone = state.alone && state.maker !== null;
+  const aloneName =
+    state.maker !== null
+      ? snapshot.members.find((m) => m.seat === state.maker)?.name ?? 'Maker'
+      : '';
+  const viewerSittingOut =
+    viewerSeat !== null && state.sittingOut.includes(viewerSeat);
+  const inPlayPhase =
+    state.phase === 'DEALER_DISCARD' || state.phase === 'PLAYING';
 
   // After a trick is taken, hold all 4 cards visible for ~1.2s, then animate them
   // toward the winning seat for ~0.75s. Suppresses the hand-end modal during the
@@ -167,10 +179,27 @@ export default function Table({
         />
       )}
 
+      {/* Prominent going-alone banner — unmistakable that the maker is solo. */}
+      {isAlone && inPlayPhase && (
+        <div className="w-full px-3 py-2 flex items-center justify-center gap-2 bg-gradient-to-r from-violet-700 via-fuchsia-600 to-violet-700 text-white shadow-lg border-y-2 border-fuchsia-300">
+          <span className="text-lg">🔥</span>
+          <span className="font-display text-lg sm:text-2xl tracking-wide">
+            {aloneName} is going ALONE
+          </span>
+          <span className="text-lg">🔥</span>
+        </div>
+      )}
+
       {/* Main grid: table + chat */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3 p-2 sm:p-4">
         {/* Table area */}
         <div className="relative flex flex-col items-center justify-between min-h-[70vh]">
+          {/* Large always-on trump indicator (top-left of the table). */}
+          {state.trump && (
+            <div className="absolute top-1 left-1 z-10">
+              <TrumpBadge trump={state.trump} />
+            </div>
+          )}
           {/* Top seat */}
           <div className="w-full flex justify-center mt-2">
             <SeatBlock
@@ -242,7 +271,11 @@ export default function Table({
               />
             )}
             {!isSpectator && state.phase === 'DEALER_DISCARD' && meIsDealer && (
-              <DiscardPanel hand={myHand} onDiscard={handlers.onDiscard} />
+              <DiscardPanel
+                hand={myHand}
+                upcardId={state.upcard?.id ?? null}
+                onDiscard={handlers.onDiscard}
+              />
             )}
 
             {/* Hand or spectator placeholder */}
@@ -286,13 +319,28 @@ export default function Table({
                       )}
                     </div>
                   )}
-                <Hand
-                  cards={myHand}
-                  legalIds={
-                    state.phase === 'PLAYING' && myTurn ? state.legalPlayIds : []
+                {viewerSittingOut && inPlayPhase && (
+                  <div className="text-sm text-violet-200 bg-violet-900/40 border border-violet-400/40 rounded-lg px-3 py-1.5 text-center">
+                    You’re sitting out this hand — your partner is going alone.
+                  </div>
+                )}
+                <div
+                  className={
+                    viewerSittingOut && inPlayPhase
+                      ? 'opacity-40 grayscale pointer-events-none'
+                      : ''
                   }
-                  onPlay={handlers.onPlay}
-                />
+                >
+                  <Hand
+                    cards={myHand}
+                    legalIds={
+                      state.phase === 'PLAYING' && myTurn && !viewerSittingOut
+                        ? state.legalPlayIds
+                        : []
+                    }
+                    onPlay={handlers.onPlay}
+                  />
+                </div>
               </>
             ) : (
               <div className="bg-black/45 border border-violet-400/30 rounded-xl px-4 py-3 text-sm text-white/80">

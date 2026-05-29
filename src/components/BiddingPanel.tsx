@@ -37,7 +37,7 @@ export default function BiddingPanel({
       <div className="flex items-center justify-between">
         <div className="text-sm text-white/80">
           {state.phase === 'BIDDING_1'
-            ? 'Order it up?'
+            ? 'Pick it up?'
             : isDealer
               ? 'Stick the dealer — call a suit:'
               : 'Call a suit (or pass):'}
@@ -60,7 +60,7 @@ export default function BiddingPanel({
               onClick={() => onOrder(alone)}
               className="px-3 py-1.5 rounded-lg bg-pitt-blue hover:bg-[#1f4ea3] text-sm font-medium"
             >
-              Order it up <SuitGlyph suit={state.upcard.suit} size={16} />
+              Pick it up <SuitGlyph suit={state.upcard.suit} size={16} />
             </button>
             <button
               onClick={onPass}
@@ -71,8 +71,8 @@ export default function BiddingPanel({
           </div>
           <div className="text-[11px] text-white/60 leading-snug">
             {isDealer
-              ? 'You’re the dealer — if anyone orders it up, you pick up the upcard and discard a card from your hand.'
-              : `If ordered, the dealer (${dealerName}) takes the upcard and discards. You become "maker" but don’t take a card.`}
+              ? 'You’re the dealer — if anyone picks it up, you take the upcard into your hand and discard a card.'
+              : `If picked up, the dealer (${dealerName}) takes the upcard and discards. You become "maker" but don’t take a card.`}
           </div>
         </>
       )}

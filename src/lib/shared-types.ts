@@ -33,6 +33,56 @@ export type ChatMessage = {
   ts: number;
 };
 
+/** Per-player stats within a single completed match. */
+export type PlayerMatchStat = {
+  name: string;
+  seat: 0 | 1 | 2 | 3;
+  team: 'NS' | 'EW';
+  isBot: boolean;
+  tricks: number;
+  defensiveTricks: number;
+  handsCalled: number;
+  callsWon: number;
+  euchres: number;
+  marches: number;
+  loneCalled: number;
+  loneWon: number;
+};
+
+/** One completed game (to 10), recorded for all-time stats. */
+export type MatchRecord = {
+  id: string;
+  ts: number; // epoch ms
+  winnerTeam: 'NS' | 'EW';
+  finalScore: { NS: number; EW: number };
+  handsPlayed: number;
+  players: PlayerMatchStat[];
+};
+
+/** Aggregated all-time stats for a single (human) player, keyed by name. */
+export type PlayerAllTime = {
+  name: string;
+  games: number;
+  wins: number;
+  tricks: number;
+  defensiveTricks: number;
+  handsCalled: number;
+  callsWon: number;
+  euchres: number;
+  marches: number;
+  loneCalled: number;
+  loneWon: number;
+};
+
+export type StatsPayload = {
+  /** Most-recent matches first (capped). */
+  matches: MatchRecord[];
+  /** Human players, aggregated all-time, sorted by wins. */
+  players: PlayerAllTime[];
+  /** Total matches recorded overall. */
+  totalMatches: number;
+};
+
 /** Public summary of a room shown on the landing page. */
 export type RoomListEntry = {
   code: string;
@@ -68,6 +118,7 @@ export type ClientToServerEvents = {
   'rooms:list': (
     ack: (rooms: RoomListEntry[]) => void
   ) => void;
+  'stats:get': (ack: (payload: StatsPayload) => void) => void;
   'bid:order': (payload: { alone: boolean }) => void;
   'bid:pass': () => void;
   'bid:call': (payload: { suit: 'H' | 'D' | 'C' | 'S'; alone: boolean }) => void;

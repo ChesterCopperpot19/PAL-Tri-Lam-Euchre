@@ -17,10 +17,10 @@ export default function HandSummary({
   members: RoomMember[];
   myId: string;
 }) {
-  // 3-second countdown until server auto-advances to the next hand.
-  const [secondsLeft, setSecondsLeft] = useState(3);
+  // Countdown until the server auto-advances to the next hand.
+  const [secondsLeft, setSecondsLeft] = useState(6);
   useEffect(() => {
-    setSecondsLeft(3);
+    setSecondsLeft(6);
     const id = setInterval(() => {
       setSecondsLeft((s) => (s > 0 ? s - 1 : 0));
     }, 1000);
