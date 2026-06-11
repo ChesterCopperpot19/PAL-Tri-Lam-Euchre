@@ -257,7 +257,9 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
         turn: next(state.dealer),
       };
       if (s.sittingOut.includes(s.turn)) s = { ...s, turn: advanceTurn(s, s.turn) };
-      events.push(`dealer_discard:${action.cardId}`);
+      // Deliberately no cardId — events broadcast to the whole room
+      // (spectators included) and the discard must stay private.
+      events.push('dealer_discard');
       return { state: s, events };
     }
 

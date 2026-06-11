@@ -9,6 +9,37 @@ import Lobby from '@/components/Lobby';
 import Table from '@/components/Table';
 import type { Suit } from '@/server/engine/types';
 
+const SUIT_NAMES: Record<string, string> = {
+  H: 'Hearts',
+  D: 'Diamonds',
+  C: 'Clubs',
+  S: 'Spades',
+};
+
+/** Human-readable toast for a server game event, or null to stay silent.
+ *  Noisy events (every card played, every trick) are deliberately skipped —
+ *  those are already visible on the felt. */
+function eventText(ev: string, snap: RoomSnapshot | null): string | null {
+  const parts = ev.split(':');
+  const nameOf = (seatStr: string) =>
+    snap?.members.find((m) => m.seat === Number(seatStr))?.name ?? 'Someone';
+  const alone = parts[3] === 'alone' ? ' — going ALONE 🔥' : '';
+  switch (parts[0]) {
+    case 'bid_order':
+      return `${nameOf(parts[1])} told the dealer to pick it up — trump is ${
+        SUIT_NAMES[parts[2]] ?? parts[2]
+      }${alone}`;
+    case 'bid_call':
+      return `${nameOf(parts[1])} called ${SUIT_NAMES[parts[2]] ?? parts[2]}${alone}`;
+    case 'bid_round1_all_passed':
+      return 'Everyone passed — round two: call any other suit';
+    case 'rematch':
+      return 'Rematch! Back to the lobby.';
+    default:
+      return null;
+  }
+}
+
 export default function RoomPage() {
   const params = useParams<{ code: string }>();
   const code = (params?.code || '').toString().toUpperCase();
@@ -24,6 +55,10 @@ export default function RoomPage() {
   const [joining, setJoining] = useState(true);
   const [joinFailed, setJoinFailed] = useState<string | null>(null);
   const joinedRef = useRef(false);
+  // Latest snapshot for event handlers registered once (avoids stale closures).
+  const snapshotRef = useRef<RoomSnapshot | null>(null);
+  const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
+  const toastIdRef = useRef(0);
 
   useEffect(() => {
     if (!playerId) return;
@@ -33,7 +68,18 @@ export default function RoomPage() {
     const socket = getSocket();
 
     function onSnap(s: RoomSnapshot) {
+      snapshotRef.current = s;
       setSnapshot(s);
+    }
+
+    function onEvent(ev: string) {
+      const text = eventText(ev, snapshotRef.current);
+      if (!text) return;
+      const id = ++toastIdRef.current;
+      setToasts((cur) => [...cur.slice(-2), { id, text }]);
+      setTimeout(() => {
+        setToasts((cur) => cur.filter((t) => t.id !== id));
+      }, 4000);
     }
     function onErr(msg: string) {
       setErrorBanner(msg);
@@ -66,6 +112,7 @@ export default function RoomPage() {
             if (!isReconnect) setJoinFailed(res.error);
             return;
           }
+          snapshotRef.current = res.snapshot;
           setSnapshot(res.snapshot);
         }
       );
@@ -79,6 +126,7 @@ export default function RoomPage() {
     socket.on('room:snapshot', onSnap);
     socket.on('room:error', onErr);
     socket.on('chat:msg', onMsg);
+    socket.on('room:event', onEvent);
     socket.on('connect', onConnect);
 
     joinRoom(false);
@@ -97,6 +145,7 @@ export default function RoomPage() {
       socket.off('room:snapshot', onSnap);
       socket.off('room:error', onErr);
       socket.off('chat:msg', onMsg);
+      socket.off('room:event', onEvent);
       socket.off('connect', onConnect);
       document.removeEventListener('visibilitychange', onVisibility);
     };
@@ -152,6 +201,23 @@ export default function RoomPage() {
       {errorBanner && (
         <div className="fixed top-2 left-1/2 -translate-x-1/2 z-50 bg-red-500/90 text-white text-sm px-3 py-1.5 rounded-md shadow-lg">
           {errorBanner}
+        </div>
+      )}
+
+      {/* Game-event toasts ("Maggie called Hearts", "Rematch!") */}
+      {toasts.length > 0 && (
+        <div
+          aria-live="polite"
+          className="fixed top-12 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-1.5 pointer-events-none px-3 w-full max-w-md"
+        >
+          {toasts.map((t) => (
+            <div
+              key={t.id}
+              className="bg-black/85 border border-gold/50 text-white text-sm px-3 py-1.5 rounded-lg shadow-lg fade-in text-center"
+            >
+              {t.text}
+            </div>
+          ))}
         </div>
       )}
 

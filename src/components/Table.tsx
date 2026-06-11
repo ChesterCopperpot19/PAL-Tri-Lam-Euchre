@@ -209,6 +209,7 @@ export default function Table({
               snapshot={snapshot}
               tricks={tricksPerSeat}
               showTricks={showTricks}
+              winFlash={pendingTrick?.winnerSeat === seatAt('top')}
             />
           </div>
 
@@ -220,6 +221,7 @@ export default function Table({
               snapshot={snapshot}
               tricks={tricksPerSeat}
               showTricks={showTricks}
+              winFlash={pendingTrick?.winnerSeat === seatAt('left')}
             />
 
             <div className="felt p-6 sm:p-10 relative">
@@ -254,6 +256,7 @@ export default function Table({
               snapshot={snapshot}
               tricks={tricksPerSeat}
               showTricks={showTricks}
+              winFlash={pendingTrick?.winnerSeat === seatAt('right')}
             />
           </div>
 
@@ -291,7 +294,7 @@ export default function Table({
                         state.phase !== 'HAND_END'
                           ? 'turn-ring'
                           : ''
-                      }`}
+                      } ${pendingTrick?.winnerSeat === viewerSeat ? 'seat-win-flash' : ''}`}
                     >
                       <span className="font-medium">{me?.name ?? 'You'}</span>
                       {state.dealer === viewerSeat && (
@@ -374,6 +377,7 @@ export default function Table({
         <GameOver
           state={state}
           members={snapshot.members}
+          isSpectator={isSpectator}
           onRematch={handlers.onRematch}
           onLeave={handlers.onLeave}
         />
@@ -388,12 +392,14 @@ function SeatBlock({
   snapshot,
   tricks,
   showTricks,
+  winFlash = false,
 }: {
   relPos: 'left' | 'top' | 'right';
   seat: SeatIndex;
   snapshot: RoomSnapshot;
   tricks: Record<SeatIndex, number>;
   showTricks: boolean;
+  winFlash?: boolean;
 }) {
   const member = snapshot.members.find((m) => m.seat === seat);
   const state = snapshot.state;
@@ -409,6 +415,7 @@ function SeatBlock({
       sittingOut={state.sittingOut.includes(seat)}
       trickCount={tricks[seat]}
       showTricks={showTricks}
+      winFlash={winFlash}
     />
   );
 }

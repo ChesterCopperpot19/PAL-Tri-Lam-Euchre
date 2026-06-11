@@ -705,7 +705,30 @@ export function attachHandlers(io: IO) {
       if (ctx) {
         const { room, sess } = ctx;
         const seat = roomManager.findSeat(room, sess.playerId);
-        if (seat != null) room.seats[seat] = null;
+        if (seat != null) {
+          const midGame =
+            room.state.phase !== 'LOBBY' && room.state.phase !== 'GAME_OVER';
+          const othersRemain =
+            room.seats.some(
+              (s, i) => i !== seat && s && !s.isBot && s.socketId
+            ) || room.spectators.length > 0;
+          if (midGame && othersRemain) {
+            // Don't leave an empty seat mid-hand — the game would stall on its
+            // turn. A bot takes over so everyone else can keep playing.
+            const used = new Set(
+              room.seats.filter(Boolean).map((s) => s!.name)
+            );
+            room.seats[seat] = {
+              playerId: botIdFor(seat),
+              name: makeBotName(used),
+              socketId: null,
+              disconnectedAt: null,
+              isBot: true,
+            };
+          } else {
+            room.seats[seat] = null;
+          }
+        }
         room.spectators = room.spectators.filter((sp) => sp.playerId !== sess.playerId);
         // Hand off host to a remaining human if needed.
         if (room.hostPlayerId === sess.playerId) {

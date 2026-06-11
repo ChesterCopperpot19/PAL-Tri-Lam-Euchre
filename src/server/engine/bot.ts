@@ -12,9 +12,11 @@ import {
   Card,
   GameState,
   PARTNER,
+  POINTS_TO_WIN,
   Rank,
   SeatIndex,
   Suit,
+  TEAM_OF,
 } from './types';
 import {
   cardStrength,
@@ -162,6 +164,19 @@ function currentWinner(plays: { seat: number; card: Card }[], trump: Suit): { se
 
 // ---------- BIDDING ----------
 
+/** Score context: bid differently when either team is at game point. */
+function scoreContext(state: GameState, seat: SeatIndex) {
+  const myTeam = TEAM_OF[seat];
+  const myScore = state.scores[myTeam];
+  const oppScore = state.scores[myTeam === 'NS' ? 'EW' : 'NS'];
+  return {
+    // One point wins it — going alone gains nothing and risks a euchre.
+    nearWin: myScore >= POINTS_TO_WIN - 1,
+    // Opponents at game point: call thinner to keep trump out of their hands.
+    oppNearWin: oppScore >= POINTS_TO_WIN - 1,
+  };
+}
+
 function chooseBidRound1(state: GameState, seat: SeatIndex): Action {
   const hand = state.hands[seat];
   const upcard = state.upcard!;
@@ -184,10 +199,13 @@ function chooseBidRound1(state: GameState, seat: SeatIndex): Action {
   }
 
   // Threshold (lower for dealer who gets free card; higher when feeding opponent).
-  const threshold = isDealer ? 4.0 : dealerIsPartner ? 4.5 : 5.5;
+  const { nearWin, oppNearWin } = scoreContext(state, seat);
+  let threshold = isDealer ? 4.0 : dealerIsPartner ? 4.5 : 5.5;
+  if (oppNearWin) threshold -= 0.5;
 
   if (h >= threshold) {
-    const alone = h >= 9 && hasBothBowers(hand, trump) && hand.some((c) => c.rank === 'A');
+    const alone =
+      !nearWin && h >= 9 && hasBothBowers(hand, trump) && hand.some((c) => c.rank === 'A');
     return { type: 'BID_ORDER', seat, alone };
   }
   return { type: 'BID_PASS', seat };
@@ -209,17 +227,24 @@ function chooseBidRound2(state: GameState, seat: SeatIndex): Action {
     if (!best || score > best.score) best = { suit: s, score };
   }
 
+  const { nearWin, oppNearWin } = scoreContext(state, seat);
   const isDealer = seat === state.dealer;
   if (isDealer) {
     // Stick the dealer: must call.
     const alone =
-      best!.score >= 9 && hasBothBowers(hand, best!.suit) && hand.some((c) => c.rank === 'A');
+      !nearWin &&
+      best!.score >= 9 &&
+      hasBothBowers(hand, best!.suit) &&
+      hand.some((c) => c.rank === 'A');
     return { type: 'BID_CALL', seat, suit: best!.suit, alone };
   }
 
-  if (best && best.score >= 5.0) {
+  if (best && best.score >= (oppNearWin ? 4.5 : 5.0)) {
     const alone =
-      best.score >= 9 && hasBothBowers(hand, best.suit) && hand.some((c) => c.rank === 'A');
+      !nearWin &&
+      best.score >= 9 &&
+      hasBothBowers(hand, best.suit) &&
+      hand.some((c) => c.rank === 'A');
     return { type: 'BID_CALL', seat, suit: best.suit, alone };
   }
   return { type: 'BID_PASS', seat };
@@ -327,10 +352,19 @@ function chooseFollow(
   );
 
   if (partnerWinning) {
-    // Don't waste cards on a trick partner is winning.
-    // Special case: if partner is winning with a low card and we are last to play and have
-    // a sure winner of equal-or-lower value... no, always prefer letting partner take it.
-    // Throw lowest legal, preferring non-trump.
+    // Usually let partner keep the trick — but if opponents still play after us
+    // and partner's card is beatable (below the ace of the led suit, i.e. not
+    // trump and not the boss card), take over while following suit costs us
+    // nothing. Ducking there often hands the trick to a later opponent.
+    const activeCount = 4 - state.sittingOut.length;
+    const playersAfterMe = activeCount - plays.length - 1;
+    const partnerStrength = cardStrength(winning.card, trump, ledEff);
+    const partnerBeatable = partnerStrength < 506; // ace-of-led = 506; trump = 800+
+    if (playersAfterMe > 0 && partnerBeatable) {
+      const nonTrumpWinners = winners.filter((c) => effectiveSuit(c, trump) !== trump);
+      if (nonTrumpWinners.length > 0) return lowest(nonTrumpWinners, trump, ledEff);
+    }
+    // Otherwise don't waste cards: throw lowest legal, preferring non-trump.
     const nonTrump = legal.filter((c) => effectiveSuit(c, trump) !== trump);
     if (nonTrump.length > 0) return lowest(nonTrump, trump, ledEff);
     return lowest(legal, trump, ledEff);

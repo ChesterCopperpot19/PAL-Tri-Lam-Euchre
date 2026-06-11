@@ -11,10 +11,21 @@ export default function Chat({
 }) {
   const [text, setText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Track whether the reader is at (or near) the bottom — if they've scrolled
+  // up to read history, new messages shouldn't yank them back down.
+  const atBottomRef = useRef(true);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    if (atBottomRef.current) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    }
   }, [messages.length]);
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  }
 
   function submit(e?: React.FormEvent) {
     e?.preventDefault();
@@ -29,7 +40,11 @@ export default function Chat({
       <div className="px-3 py-2 text-xs uppercase tracking-wider text-white/70 border-b border-white/10 bg-white/5">
         Table chat
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5 text-sm">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5 text-sm"
+      >
         {messages.length === 0 && (
           <div className="text-white/40 italic">Say hi to your friends 👋</div>
         )}

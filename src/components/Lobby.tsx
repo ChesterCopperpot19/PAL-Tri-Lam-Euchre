@@ -66,15 +66,21 @@ export default function Lobby({
       </div>
 
       {confirmLeave && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Quit this game?"
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+        >
           <div className="bg-[#00133d] border border-gold/40 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
             <div className="font-display text-2xl text-gold">Quit this game?</div>
             <p className="text-sm text-white/75">
-              Leaving will close the room and remove any bots. The game will no longer
-              show on the home page.
+              You&apos;ll leave this room right away. If you&apos;re the last person here,
+              the room closes and any bots are removed.
             </p>
             <div className="flex gap-2">
               <button
+                autoFocus
                 onClick={() => setConfirmLeave(false)}
                 className="flex-1 bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg py-2.5 font-medium"
               >
@@ -111,10 +117,15 @@ export default function Lobby({
                   {m ? (
                     <>
                       <span
+                        aria-hidden="true"
+                        title={m.connected ? 'Connected' : 'Disconnected'}
                         className={`inline-block w-2 h-2 rounded-full mr-1.5 ${
                           m.connected ? 'bg-gold' : 'bg-red-400'
                         }`}
                       />
+                      <span className="sr-only">
+                        {m.connected ? 'connected' : 'disconnected'}
+                      </span>
                       {m.name}
                       {isMe && <span className="text-gold text-xs ml-1">(you)</span>}
                     </>
@@ -150,6 +161,7 @@ export default function Lobby({
                   )}
                   {!m && isHost && spectators.length > 0 && (
                     <select
+                      aria-label="Seat a spectator here"
                       onChange={(e) => {
                         if (e.target.value) onPromote(e.target.value, i as 0 | 1 | 2 | 3);
                       }}

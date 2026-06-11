@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import type { Card as CardT, Suit } from '@/server/engine/types';
+import type { Card as CardT, Rank, Suit } from '@/server/engine/types';
 
 const NUM_BACKS = 5;
 
@@ -11,6 +11,25 @@ const SUIT_COLOR: Record<Suit, string> = {
   C: '#1a1a1a',
   S: '#1a1a1a',
 };
+const SUIT_NAME: Record<Suit, string> = {
+  H: 'Hearts',
+  D: 'Diamonds',
+  C: 'Clubs',
+  S: 'Spades',
+};
+const RANK_NAME: Record<Rank, string> = {
+  '9': 'Nine',
+  '10': 'Ten',
+  J: 'Jack',
+  Q: 'Queen',
+  K: 'King',
+  A: 'Ace',
+};
+
+/** Accessible name for a card, e.g. "King of Spades". */
+export function cardLabel(card: CardT): string {
+  return `${RANK_NAME[card.rank]} of ${SUIT_NAME[card.suit]}`;
+}
 
 export function CardFace({
   card,
@@ -34,15 +53,9 @@ export function CardFace({
         ? { w: 84, h: 120, font: 18, big: 36 }
         : { w: 70, h: 100, font: 16, big: 30 };
 
-  return (
-    <button
-      onClick={onClick}
-      disabled={!onClick}
-      className={`card-face card-base relative transition-transform duration-150 ${
-        highlight ? 'legal-glow cursor-pointer' : ''
-      } ${dim ? 'illegal-dim' : ''} ${onClick ? 'hover:-translate-y-1' : 'cursor-default'}`}
-      style={{ width: sz.w, height: sz.h, color }}
-    >
+  // The pips/rank text is purely visual — screen readers get cardLabel().
+  const inner = (
+    <div aria-hidden="true">
       <div
         className="absolute top-1 left-1.5 leading-none flex flex-col items-center"
         style={{ fontSize: sz.font, fontWeight: 700 }}
@@ -69,6 +82,34 @@ export function CardFace({
         <span>{card.rank}</span>
         <span style={{ fontSize: sz.font + 1, lineHeight: 1 }}>{glyph}</span>
       </div>
+    </div>
+  );
+
+  // Non-interactive cards (opponents' plays, your hand off-turn) are plain
+  // images, not disabled buttons — less noise for keyboard & screen readers.
+  if (!onClick) {
+    return (
+      <div
+        role="img"
+        aria-label={cardLabel(card)}
+        className={`card-face card-base relative ${dim ? 'illegal-dim' : ''}`}
+        style={{ width: sz.w, height: sz.h, color }}
+      >
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      aria-label={cardLabel(card)}
+      className={`card-face card-base relative transition-transform duration-150 cursor-pointer ${
+        highlight ? 'legal-glow' : ''
+      } ${dim ? 'illegal-dim' : ''} hover:-translate-y-1`}
+      style={{ width: sz.w, height: sz.h, color }}
+    >
+      {inner}
     </button>
   );
 }
@@ -92,7 +133,11 @@ export function CardBack({
   const [photoIdx] = useState(() => Math.floor(Math.random() * NUM_BACKS) + 1);
 
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      role="img"
+      aria-label={count > 1 ? `${count} face-down cards` : 'Face-down card'}
+    >
       <div
         className="card-back card-base"
         style={{
@@ -104,7 +149,10 @@ export function CardBack({
         }}
       />
       {count > 1 && (
-        <div className="absolute -bottom-1 -right-1 bg-black/70 text-white text-xs rounded-full px-1.5 py-0.5">
+        <div
+          aria-hidden="true"
+          className="absolute -bottom-1 -right-1 bg-black/70 text-white text-xs rounded-full px-1.5 py-0.5"
+        >
           {count}
         </div>
       )}
@@ -123,7 +171,11 @@ export function SuitGlyph({
   color?: string;
 }) {
   return (
-    <span style={{ color: color ?? SUIT_COLOR[suit], fontSize: size, lineHeight: 1 }}>
+    <span
+      role="img"
+      aria-label={SUIT_NAME[suit]}
+      style={{ color: color ?? SUIT_COLOR[suit], fontSize: size, lineHeight: 1 }}
+    >
       {SUIT_GLYPH[suit]}
     </span>
   );

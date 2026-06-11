@@ -12,6 +12,7 @@ export default function PlayerSeat({
   sittingOut,
   trickCount,
   showTricks,
+  winFlash = false,
 }: {
   position: 'top' | 'left' | 'right';
   member?: RoomMember;
@@ -24,6 +25,8 @@ export default function PlayerSeat({
   trickCount: number;
   /** Whether to render the trick badge (only true mid-hand). */
   showTricks: boolean;
+  /** Brief gold pulse when this seat just won a trick. */
+  winFlash?: boolean;
 }) {
   const layoutClass =
     position === 'top'
@@ -31,27 +34,25 @@ export default function PlayerSeat({
       : position === 'left'
         ? 'flex-row-reverse'
         : 'flex-row';
-  const fanOrient =
-    position === 'top'
-      ? 'flex-row'
-      : position === 'left'
-        ? 'flex-col'
-        : 'flex-col';
-  const cardSize = position === 'top' ? 'sm' : 'sm';
 
   return (
     <div className={`flex items-center gap-2 ${layoutClass}`}>
       <div
         className={`px-3 py-1.5 rounded-lg bg-black/45 border border-white/10 flex items-center gap-2 ${
           isTurn ? 'turn-ring' : ''
-        }`}
+        } ${winFlash ? 'seat-win-flash' : ''}`}
       >
         <div className="flex items-center gap-1.5">
           <span
+            aria-hidden="true"
+            title={member?.connected ? 'Connected' : 'Disconnected'}
             className={`inline-block w-2 h-2 rounded-full ${
               member?.connected ? 'bg-gold' : 'bg-red-400'
             }`}
           />
+          <span className="sr-only">
+            {member?.connected ? 'connected' : 'disconnected'}
+          </span>
           <span className="text-sm font-medium text-white/90">
             {member?.name ?? 'Empty'}
           </span>
@@ -80,10 +81,10 @@ export default function PlayerSeat({
           </span>
         )}
       </div>
-      <div className={`flex ${fanOrient} gap-[-30px]`} style={{ minWidth: 60, minHeight: 60 }}>
+      <div className="flex" style={{ minWidth: 60, minHeight: 60 }}>
         {handCount > 0 ? (
           <div className={`relative ${sittingOut ? 'opacity-30 grayscale' : ''}`}>
-            <CardBack size={cardSize} count={handCount} />
+            <CardBack size="sm" count={handCount} />
           </div>
         ) : (
           <div className="text-white/30 text-xs italic">no cards</div>

@@ -1,5 +1,5 @@
 'use client';
-import { CardBack, CardFace } from './Card';
+import { CardBack, CardFace, cardLabel } from './Card';
 import type { Card as CardT } from '@/server/engine/types';
 
 /**
@@ -21,8 +21,11 @@ export default function BiddingDeck({
     <div className="flex flex-col items-center gap-2">
       <div
         className="relative"
+        role="img"
+        aria-label={
+          showUpcard && upcard ? `Upcard: ${cardLabel(upcard)}` : 'Kitty (turned down)'
+        }
         style={{ width: 90, height: 120 }}
-        aria-label={showUpcard ? `Upcard ${upcard?.rank} of ${upcard?.suit}` : 'Kitty (turned down)'}
       >
         {/* Bottom of stack — three back-cards offset to suggest depth. */}
         <div

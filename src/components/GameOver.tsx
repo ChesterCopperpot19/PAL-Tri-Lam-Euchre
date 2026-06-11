@@ -7,11 +7,14 @@ import StatsTable from './StatsTable';
 export default function GameOver({
   state,
   members,
+  isSpectator = false,
   onRematch,
   onLeave,
 }: {
   state: RedactedState;
   members: RoomMember[];
+  /** Spectators can leave but not trigger a rematch. */
+  isSpectator?: boolean;
   onRematch: () => void;
   onLeave: () => void;
 }) {
@@ -19,7 +22,12 @@ export default function GameOver({
   const ew = teamName(members, 'EW');
   const winner = state.scores.NS > state.scores.EW ? ns : ew;
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Game over — ${winner} win`}
+      className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto"
+    >
       <div className="bg-[#00133d] border border-gold rounded-2xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl my-auto">
         <div className="text-center">
           <div className="text-xs uppercase tracking-[0.3em] text-white/60">Game over</div>
@@ -44,13 +52,17 @@ export default function GameOver({
         </div>
 
         <div className="text-center mt-5 flex items-center justify-center gap-3">
+          {!isSpectator && (
+            <button
+              autoFocus
+              onClick={onRematch}
+              className="bg-gold text-black font-semibold rounded-lg px-5 py-2.5 hover:brightness-110"
+            >
+              🔁 Rematch
+            </button>
+          )}
           <button
-            onClick={onRematch}
-            className="bg-gold text-black font-semibold rounded-lg px-5 py-2.5 hover:brightness-110"
-          >
-            🔁 Rematch
-          </button>
-          <button
+            autoFocus={isSpectator}
             onClick={onLeave}
             className="bg-white/10 border border-white/20 text-white font-medium rounded-lg px-5 py-2.5 hover:bg-white/20"
           >

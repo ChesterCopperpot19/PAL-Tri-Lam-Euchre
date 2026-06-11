@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SuitGlyph } from './Card';
 import type { HandSummary as HS, SeatIndex } from '@/server/engine/types';
 import { TEAM_OF } from '@/server/engine/types';
@@ -26,6 +26,12 @@ export default function HandSummary({
     }, 1000);
     return () => clearInterval(id);
   }, [summary]);
+
+  // Move focus into the dialog so screen readers announce the result.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    panelRef.current?.focus();
+  }, []);
   const makerName =
     members.find((m) => m.seat === summary.maker)?.name ?? SEAT_NAME[summary.maker];
 
@@ -59,8 +65,17 @@ export default function HandSummary({
   sublineParts.push(`+${points} for ${winnerTeamName}`);
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
-      <div className="bg-[#00133d] border border-gold/40 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-3">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Hand complete — ${headline}`}
+      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+    >
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        className="bg-[#00133d] border border-gold/40 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-3 outline-none"
+      >
         <div className="text-center">
           <div className="text-xs uppercase tracking-widest text-white/60">Hand complete</div>
           <h3 className="font-display text-2xl sm:text-3xl text-gold leading-tight mt-1 break-words">
