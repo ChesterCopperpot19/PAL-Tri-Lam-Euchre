@@ -320,7 +320,6 @@ function chooseFollow(
   const plays = state.currentTrick.plays;
   const winning = currentWinner(plays, trump);
   const partnerWinning = winning.seat === PARTNER[seat];
-  const isLastToPlay = plays.length === 4 - state.sittingOut.length - 1;
 
   // Cards in `legal` that would currently win the trick.
   const winners = legal.filter(

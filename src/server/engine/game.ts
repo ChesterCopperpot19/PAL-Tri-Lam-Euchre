@@ -86,7 +86,7 @@ export function dealHand(state: GameState): GameState {
     trickCounts: { NS: 0, EW: 0 },
     lastHand: null,
     turn: next(dealer),
-    seed: (state.seed * 1664525 + 1013904223) >>> 0, // re-seed for next deal
+    seed: (Math.imul(state.seed, 1664525) + 1013904223) >>> 0, // re-seed for next deal
   };
 }
 

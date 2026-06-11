@@ -1,5 +1,5 @@
 import type { Server, Socket } from 'socket.io';
-import { applyAction } from './engine/game';
+import { applyAction, createGame } from './engine/game';
 import { chooseBotAction } from './engine/bot';
 import { redactState } from './engine/redact';
 import { roomManager, Room } from './rooms';
@@ -54,6 +54,8 @@ function broadcast(io: IO, room: Room) {
   scheduleBotTick(io, room);
   // Auto-advance from HAND_END after the score has been shown.
   scheduleAutoNextHand(io, room);
+  // Auto-play for an absent/idle human so the game never freezes on their turn.
+  scheduleHumanTurnTimer(io, room);
   // Record the finished game for all-time stats (exactly once).
   if (room.state.phase === 'GAME_OVER' && !room.statsRecorded) {
     room.statsRecorded = true;
@@ -199,8 +201,6 @@ const BOT_DELAY_MS = 700;
 /** After a trick is taken we delay so the client animation has time to play. */
 const POST_TRICK_DELAY_MS = 2100;
 
-const lastTrickCountByRoom = new Map<string, number>();
-
 function scheduleBotTick(io: IO, room: Room) {
   if (room.botTimer) {
     clearTimeout(room.botTimer);
@@ -220,9 +220,9 @@ function scheduleBotTick(io: IO, room: Room) {
   if (room.state.sittingOut.includes(turnSeat as 0 | 1 | 2 | 3)) return;
 
   // Detect: did a trick just complete? (completedTricks grew since last call.)
-  const prevCount = lastTrickCountByRoom.get(room.code) ?? 0;
+  const prevCount = room.lastTrickCount;
   const currCount = room.state.completedTricks.length;
-  lastTrickCountByRoom.set(room.code, currCount);
+  room.lastTrickCount = currCount;
   const justWonTrick = currCount > prevCount;
   const delay = justWonTrick ? POST_TRICK_DELAY_MS : BOT_DELAY_MS;
 
@@ -238,6 +238,47 @@ function scheduleBotTick(io: IO, room: Room) {
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(`bot error in room ${room.code}:`, (e as Error).message);
+    }
+  }, delay);
+}
+
+// If it's an absent or idle human's turn, the server plays a sensible move for
+// them after a delay so the game never freezes. Disconnected players get a short
+// window (in case they reconnect); connected-but-idle players get longer.
+const AFK_TURN_MS = 30_000;
+const DISCONNECTED_TURN_MS = 10_000;
+
+const ACTIONABLE_PHASES = new Set(['BIDDING_1', 'BIDDING_2', 'DEALER_DISCARD', 'PLAYING']);
+
+function scheduleHumanTurnTimer(io: IO, room: Room) {
+  if (room.turnTimer) {
+    clearTimeout(room.turnTimer);
+    room.turnTimer = null;
+  }
+  if (!ACTIONABLE_PHASES.has(room.state.phase)) return;
+  const turnSeat = room.state.turn;
+  const seated = room.seats[turnSeat];
+  if (!seated || seated.isBot) return; // bots are handled by scheduleBotTick
+  if (room.state.sittingOut.includes(turnSeat)) return;
+
+  const delay = seated.socketId ? AFK_TURN_MS : DISCONNECTED_TURN_MS;
+  room.turnTimer = setTimeout(() => {
+    room.turnTimer = null;
+    if (!roomManager.get(room.code)) return; // room gone
+    // Re-validate: still the same human's turn in an actionable phase. (Any state
+    // change reschedules this timer, so normally nothing has changed.)
+    if (!ACTIONABLE_PHASES.has(room.state.phase) || room.state.turn !== turnSeat) return;
+    const s = room.seats[turnSeat];
+    if (!s || s.isBot) return;
+    try {
+      const action = chooseBotAction(room.state, turnSeat);
+      const { state, events } = applyAction(room.state, action);
+      room.state = state;
+      events.forEach((e) => io.to(room.code).emit('room:event', e));
+      broadcast(io, room);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(`auto-play (absent human) failed in room ${room.code}:`, (e as Error).message);
     }
   }, delay);
 }
@@ -442,6 +483,33 @@ export function attachHandlers(io: IO) {
       } catch (e) {
         err(socket, (e as Error).message);
       }
+    });
+
+    socket.on('room:rematch', () => {
+      // Reset a finished game back to the lobby, keeping every seat (players +
+      // bots) so the same group can play again. The lobby lets people confirm
+      // seats / swap bots before the host starts the next game.
+      const ctx = getSeatedSession(socket);
+      if (!ctx) return err(socket, 'only players can rematch');
+      const { room } = ctx;
+      if (room.state.phase !== 'GAME_OVER') return err(socket, 'game is not over');
+      if (room.botTimer) {
+        clearTimeout(room.botTimer);
+        room.botTimer = null;
+      }
+      if (room.handEndTimer) {
+        clearTimeout(room.handEndTimer);
+        room.handEndTimer = null;
+      }
+      if (room.turnTimer) {
+        clearTimeout(room.turnTimer);
+        room.turnTimer = null;
+      }
+      room.state = createGame();
+      room.statsRecorded = false;
+      room.lastTrickCount = 0;
+      io.to(room.code).emit('room:event', 'rematch');
+      broadcast(io, room);
     });
 
     socket.on('room:promote', ({ playerId, seat }) => {

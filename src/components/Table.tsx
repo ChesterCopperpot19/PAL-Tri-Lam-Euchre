@@ -26,6 +26,7 @@ type Handlers = {
   onPlay: (cardId: string) => void;
   onChat: (text: string) => void;
   onNextHand: () => void;
+  onRematch: () => void;
   onLeave: () => void;
 };
 
@@ -373,6 +374,7 @@ export default function Table({
         <GameOver
           state={state}
           members={snapshot.members}
+          onRematch={handlers.onRematch}
           onLeave={handlers.onLeave}
         />
       )}

@@ -33,6 +33,10 @@ export type Room = {
   botTimer: NodeJS.Timeout | null;
   /** Auto-advance timer used in the HAND_END phase. */
   handEndTimer: NodeJS.Timeout | null;
+  /** Auto-play timer for an absent/idle human whose turn it is. */
+  turnTimer: NodeJS.Timeout | null;
+  /** completedTricks length at the last bot tick (per-room, GC'd with the room). */
+  lastTrickCount: number;
   /** Guards against recording the same finished game more than once. */
   statsRecorded: boolean;
 };
@@ -73,6 +77,8 @@ export class RoomManager {
       createdAt: Date.now(),
       botTimer: null,
       handEndTimer: null,
+      turnTimer: null,
+      lastTrickCount: 0,
       statsRecorded: false,
     };
     this.rooms.set(code, room);
@@ -84,6 +90,13 @@ export class RoomManager {
   }
 
   delete(code: string) {
+    const room = this.rooms.get(code.toUpperCase());
+    if (room) {
+      // Clear any pending timers so they don't keep the room object alive.
+      if (room.botTimer) clearTimeout(room.botTimer);
+      if (room.handEndTimer) clearTimeout(room.handEndTimer);
+      if (room.turnTimer) clearTimeout(room.turnTimer);
+    }
     this.rooms.delete(code.toUpperCase());
   }
 
@@ -152,7 +165,13 @@ export class RoomManager {
               room.seats[i]?.playerId === seat.playerId &&
               room.seats[i]?.socketId === null &&
               room.seats[i]?.disconnectedAt === seat.disconnectedAt;
-            if (stillSame && room.state.phase === 'LOBBY') {
+            if (!stillSame) return;
+            const connectedHumans = room.seats.filter(
+              (s) => s && !s.isBot && s.socketId
+            ).length;
+            const abandoned = connectedHumans === 0 && room.spectators.length === 0;
+            if (room.state.phase === 'LOBBY') {
+              // In the lobby, free the seat outright after grace.
               room.seats[i] = null;
               if (room.hostPlayerId === seat.playerId) {
                 const next =
@@ -162,15 +181,16 @@ export class RoomManager {
                 room.hostPlayerId = next;
               }
               onChange(room);
-              // Bots alone don't keep a room alive — delete it if no connected
-              // humans (and no spectators) remain, so it stops showing on the
-              // home page as an open game.
-              const connectedHumans = room.seats.filter(
-                (s) => s && !s.isBot && s.socketId
-              ).length;
+              // Bots alone don't keep a room alive — delete it if nobody's left.
               if (connectedHumans === 0 && room.spectators.length === 0) {
                 this.delete(room.code);
               }
+            } else if (abandoned) {
+              // Mid-game: normally we KEEP the seat held so the player can
+              // reconnect (the server auto-plays for them meanwhile). But if the
+              // whole room is abandoned — nobody connected, no spectators — there's
+              // no one to reconnect for, so tear it down instead of leaking it.
+              this.delete(room.code);
             }
           }, DISCONNECT_GRACE_MS);
         }

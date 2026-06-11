@@ -71,10 +71,15 @@ export default function RoomPage() {
       );
     }
 
+    // Named handler so cleanup removes only ours, not every 'connect' listener.
+    function onConnect() {
+      joinRoom(true);
+    }
+
     socket.on('room:snapshot', onSnap);
     socket.on('room:error', onErr);
     socket.on('chat:msg', onMsg);
-    socket.on('connect', () => joinRoom(true));
+    socket.on('connect', onConnect);
 
     joinRoom(false);
 
@@ -92,7 +97,7 @@ export default function RoomPage() {
       socket.off('room:snapshot', onSnap);
       socket.off('room:error', onErr);
       socket.off('chat:msg', onMsg);
-      socket.off('connect');
+      socket.off('connect', onConnect);
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [code, playerId, name, role]);
@@ -131,6 +136,7 @@ export default function RoomPage() {
     onPlay: (cardId: string) => socket.emit('play:card', { cardId }),
     onChat: (text: string) => socket.emit('chat:send', { text }),
     onNextHand: () => socket.emit('room:nextHand'),
+    onRematch: () => socket.emit('room:rematch'),
     onLeave: () => {
       // Tell the server we're intentionally leaving so it cleans the room up
       // immediately (no 60s grace, and bot-only rooms get deleted). The server

@@ -7,10 +7,12 @@ import StatsTable from './StatsTable';
 export default function GameOver({
   state,
   members,
+  onRematch,
   onLeave,
 }: {
   state: RedactedState;
   members: RoomMember[];
+  onRematch: () => void;
   onLeave: () => void;
 }) {
   const ns = teamName(members, 'NS');
@@ -41,12 +43,18 @@ export default function GameOver({
           <StatsTable history={state.history} members={members} />
         </div>
 
-        <div className="text-center mt-5">
+        <div className="text-center mt-5 flex items-center justify-center gap-3">
           <button
-            onClick={onLeave}
+            onClick={onRematch}
             className="bg-gold text-black font-semibold rounded-lg px-5 py-2.5 hover:brightness-110"
           >
-            Back to lobby
+            🔁 Rematch
+          </button>
+          <button
+            onClick={onLeave}
+            className="bg-white/10 border border-white/20 text-white font-medium rounded-lg px-5 py-2.5 hover:bg-white/20"
+          >
+            Leave game
           </button>
         </div>
       </div>

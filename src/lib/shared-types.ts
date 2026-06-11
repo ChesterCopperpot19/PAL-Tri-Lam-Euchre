@@ -110,6 +110,7 @@ export type ClientToServerEvents = {
   'room:leave': () => void;
   'room:start': () => void;
   'room:nextHand': () => void;
+  'room:rematch': () => void;
   'room:promote': (payload: { playerId: string; seat: 0 | 1 | 2 | 3 }) => void;
   'room:moveSeat': (payload: { seat: 0 | 1 | 2 | 3 }) => void;
   'room:addBot': (payload: { seat?: 0 | 1 | 2 | 3 }) => void;
