@@ -11,10 +11,13 @@ import {
   computeHeadToHead,
   computeSuperlatives,
   sortPlayers,
-  type SortKey,
+  type Superlative,
 } from '@/lib/stats-analytics';
+import { computeElo, mostImproved } from '@/lib/stats-elo';
+import { computeBadges } from '@/lib/stats-achievements';
 import SuperlativeCards from '@/components/stats/SuperlativeCards';
-import Leaderboard from '@/components/stats/Leaderboard';
+import Leaderboard, { type RankedRow, type LeaderKey } from '@/components/stats/Leaderboard';
+import AchievementsStrip from '@/components/stats/AchievementsStrip';
 import DuosSection from '@/components/stats/DuosSection';
 import FrenemyTable from '@/components/stats/FrenemyTable';
 import PartnershipHeatmap from '@/components/stats/PartnershipHeatmap';
@@ -67,7 +70,7 @@ export default function StatsPage() {
   // Interactive controls.
   const [minGames, setMinGames] = useState(1); // leaderboard / efficiency qualification
   const [duoMin, setDuoMin] = useState(2); // min games together for best/worst duos
-  const [sortKey, setSortKey] = useState<SortKey>('wins');
+  const [sortKey, setSortKey] = useState<LeaderKey>('rating');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Charts render client-only (canvas), so gate them until after mount.
@@ -97,15 +100,57 @@ export default function StatsPage() {
   const players = useMemo(() => computePlayers(allMatches), [allMatches]);
   const duos = useMemo(() => computeDuos(allMatches), [allMatches]);
   const h2h = useMemo(() => computeHeadToHead(allMatches), [allMatches]);
-  const superlatives = useMemo(() => computeSuperlatives(players, minGames), [players, minGames]);
+  const elo = useMemo(() => computeElo(allMatches), [allMatches]);
+  const badges = useMemo(() => computeBadges(players, elo), [players, elo]);
+  const improved = useMemo(() => mostImproved(elo), [elo]);
 
-  const qualified = useMemo(() => players.filter((p) => p.games >= minGames), [players, minGames]);
-  const sorted = useMemo(() => sortPlayers(qualified, sortKey, sortDir), [qualified, sortKey, sortDir]);
+  // Superlatives + a Most-Improved card (Elo-based).
+  const superlatives = useMemo<Superlative[]>(() => {
+    const base = computeSuperlatives(players, minGames);
+    const earned = improved && improved.gain > 0;
+    const mi: Superlative = {
+      id: 'improved',
+      emoji: '📈',
+      title: 'Most Improved',
+      blurb: 'Biggest recent Elo gain',
+      player: earned ? improved!.name : null,
+      value: earned ? `+${improved!.gain}` : '—',
+      sub: earned ? 'Elo over recent games' : undefined,
+    };
+    return [mi, ...base];
+  }, [players, minGames, improved]);
+
+  // Merge Elo onto each player for the leaderboard.
+  const ranked = useMemo<RankedRow[]>(
+    () =>
+      players.map((p) => {
+        const e = elo.get(p.name);
+        return {
+          ...p,
+          rating: e ? e.rating : null,
+          ratingProvisional: e ? e.provisional : false,
+          ratingDelta: e ? e.delta : 0,
+        };
+      }),
+    [players, elo]
+  );
+
+  const qualified = useMemo(() => ranked.filter((p) => p.games >= minGames), [ranked, minGames]);
+  const sorted = useMemo(() => {
+    if (sortKey === 'rating') {
+      const mult = sortDir === 'desc' ? -1 : 1;
+      return qualified
+        .slice()
+        .sort((a, b) => ((a.rating ?? 0) - (b.rating ?? 0)) * mult || b.games - a.games);
+    }
+    // Other keys are PlayerRow fields — reuse the shared sorter (same objects).
+    return sortPlayers(qualified, sortKey, sortDir) as RankedRow[];
+  }, [qualified, sortKey, sortDir]);
 
   const maxGames = useMemo(() => players.reduce((m, p) => Math.max(m, p.games), 0), [players]);
   const hiddenCount = players.length - qualified.length;
 
-  function onSort(key: SortKey) {
+  function onSort(key: LeaderKey) {
     if (key === sortKey) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
@@ -256,6 +301,11 @@ export default function StatsPage() {
             note="Records when two players are on opposing teams"
           >
             <FrenemyTable rows={h2h} minMeetings={1} />
+          </Section>
+
+          {/* Achievements */}
+          <Section title="🏅 Achievements" note="Badges earned by the crew">
+            <AchievementsStrip badges={badges} />
           </Section>
 
           {/* Recent matches */}
