@@ -13,7 +13,8 @@ import {
   ServerToClientEvents,
 } from '@/lib/shared-types';
 import { TEAM_OF, type SeatIndex } from './engine/types';
-import { getMatches, recordMatch } from './stats-store';
+import { deleteMatch, getMatches, recordMatch } from './stats-store';
+import { buildManualMatch, validateManualInput } from '@/lib/manual-match';
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents>;
 type S = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -26,6 +27,17 @@ type Session = {
   isSpectator: boolean;
 };
 const sessions = new Map<string, Session>();
+
+// Light rate limit for the manual stat-write endpoints (per socket).
+const statWriteTimes = new Map<string, number[]>();
+function allowStatWrite(socketId: string): boolean {
+  const now = Date.now();
+  const recent = (statWriteTimes.get(socketId) ?? []).filter((t) => now - t < 60_000);
+  if (recent.length >= 20) return false;
+  recent.push(now);
+  statWriteTimes.set(socketId, recent);
+  return true;
+}
 
 function snapshot(room: Room, viewerSeat: 0 | 1 | 2 | 3 | null): RoomSnapshot {
   return {
@@ -372,6 +384,41 @@ export function attachHandlers(io: IO) {
         // eslint-disable-next-line no-console
         console.error('stats:get failed:', (e as Error).message);
         ack({ matches: [], players: [], totalMatches: 0 });
+      }
+    });
+
+    // Log an in-person game manually. All four players are humans → it counts
+    // in the dashboard alongside app-played games.
+    socket.on('stats:add', async (payload, ack) => {
+      try {
+        if (!allowStatWrite(socket.id)) {
+          return ack({ ok: false, error: 'Too many entries in a short time — give it a moment.' });
+        }
+        const err = validateManualInput(payload);
+        if (err) return ack({ ok: false, error: err });
+        const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        await recordMatch(buildManualMatch(payload, id, Date.now()));
+        ack({ ok: true });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('stats:add failed:', (e as Error).message);
+        ack({ ok: false, error: 'Could not save the game. Please try again.' });
+      }
+    });
+
+    // Delete a recorded game (e.g. a mistaken manual entry).
+    socket.on('stats:delete', async ({ id }, ack) => {
+      try {
+        if (!allowStatWrite(socket.id)) {
+          return ack({ ok: false, error: 'Too many requests — give it a moment.' });
+        }
+        if (!id || typeof id !== 'string') return ack({ ok: false, error: 'Missing game id.' });
+        const removed = await deleteMatch(id);
+        ack(removed ? { ok: true } : { ok: false, error: 'That game was not found.' });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('stats:delete failed:', (e as Error).message);
+        ack({ ok: false, error: 'Could not delete the game. Please try again.' });
       }
     });
 
@@ -757,6 +804,7 @@ export function attachHandlers(io: IO) {
 
     socket.on('disconnect', () => {
       sessions.delete(socket.id);
+      statWriteTimes.delete(socket.id);
       roomManager.handleDisconnect(socket.id, (room) => broadcast(io, room));
     });
   });

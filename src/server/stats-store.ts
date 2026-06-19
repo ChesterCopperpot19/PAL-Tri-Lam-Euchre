@@ -130,3 +130,25 @@ export async function getMatches(): Promise<MatchRecord[]> {
   // JSONB columns come back already parsed.
   return res.rows.map((r) => r.data);
 }
+
+/** Delete one match by id. Returns true if a row was removed. */
+export async function deleteMatch(id: string): Promise<boolean> {
+  const p = getPool();
+  if (!p) {
+    fileEnsureLoaded();
+    const before = fileMatches.length;
+    fileMatches = fileMatches.filter((m) => m.id !== id);
+    if (fileMatches.length === before) return false;
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(FILE, JSON.stringify(fileMatches));
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('failed to persist delete to file:', (e as Error).message);
+    }
+    return true;
+  }
+  await ensureSchema(p);
+  const res = await p.query('DELETE FROM matches WHERE id = $1', [id]);
+  return (res.rowCount ?? 0) > 0;
+}

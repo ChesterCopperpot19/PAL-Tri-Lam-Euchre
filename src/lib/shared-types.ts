@@ -57,6 +57,31 @@ export type MatchRecord = {
   finalScore: { NS: number; EW: number };
   handsPlayed: number;
   players: PlayerMatchStat[];
+  /** How the game was recorded. Absent = played in the app. */
+  source?: 'app' | 'manual';
+};
+
+/** One player in a manually-logged (in-person) game. Only `name` is required. */
+export type ManualPlayerInput = {
+  name: string;
+  tricks?: number;
+  defensiveTricks?: number;
+  handsCalled?: number;
+  callsWon?: number;
+  euchres?: number;
+  marches?: number;
+  loneCalled?: number;
+  loneWon?: number;
+};
+
+/** Payload for logging an in-person game. team1 = partners, team2 = partners. */
+export type ManualMatchInput = {
+  team1: ManualPlayerInput[]; // exactly 2
+  team2: ManualPlayerInput[]; // exactly 2
+  winner: 'team1' | 'team2';
+  /** Optional final score (defaults to winner 10, loser 0). */
+  finalScore?: { team1: number; team2: number };
+  handsPlayed?: number;
 };
 
 /** Aggregated all-time stats for a single (human) player, keyed by name. */
@@ -120,6 +145,14 @@ export type ClientToServerEvents = {
     ack: (rooms: RoomListEntry[]) => void
   ) => void;
   'stats:get': (ack: (payload: StatsPayload) => void) => void;
+  'stats:add': (
+    payload: ManualMatchInput,
+    ack: (res: { ok: true } | { ok: false; error: string }) => void
+  ) => void;
+  'stats:delete': (
+    payload: { id: string },
+    ack: (res: { ok: true } | { ok: false; error: string }) => void
+  ) => void;
   'bid:order': (payload: { alone: boolean }) => void;
   'bid:pass': () => void;
   'bid:call': (payload: { suit: 'H' | 'D' | 'C' | 'S'; alone: boolean }) => void;
