@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useDisplayName, usePlayerId } from '@/lib/usePlayerId';
 import { getSocket } from '@/lib/socket-client';
+import PlayerNameSelect from '@/components/PlayerNameSelect';
 import type { RoomListEntry } from '@/lib/shared-types';
 
 const PHASE_LABEL: Record<string, string> = {
@@ -99,12 +100,11 @@ export default function LandingPage() {
 
         <label className="block mb-4">
           <span className="text-sm text-white/80">Your name</span>
-          <input
+          <PlayerNameSelect
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={24}
-            placeholder="e.g. Alex"
-            className="mt-1 w-full bg-black/40 border border-white/15 rounded-lg px-3 py-2.5 outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-gold/50"
+            onChange={setName}
+            placeholder="Select your name…"
+            className="mt-1"
           />
         </label>
 

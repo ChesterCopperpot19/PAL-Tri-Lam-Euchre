@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { getSocket } from '@/lib/socket-client';
+import PlayerNameSelect from '@/components/PlayerNameSelect';
 import type { ManualMatchInput, ManualPlayerInput } from '@/lib/shared-types';
 
 // The four name slots, in form order. team1 = partners, team2 = partners.
@@ -154,12 +155,10 @@ export default function LogGamePage() {
   }
 
   const nameInput = (slot: Slot, placeholder: string) => (
-    <input
+    <PlayerNameSelect
       value={names[slot]}
-      onChange={(e) => setName(slot, e.target.value)}
+      onChange={(v) => setName(slot, v)}
       placeholder={placeholder}
-      maxLength={24}
-      className="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-2.5 outline-none focus:border-gold"
     />
   );
 
