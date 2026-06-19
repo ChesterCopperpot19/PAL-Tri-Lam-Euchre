@@ -60,7 +60,8 @@ export default function BiddingPanel({
               onClick={() => onOrder(alone)}
               className="px-3 py-1.5 rounded-lg bg-pitt-blue hover:bg-[#1f4ea3] text-sm font-medium"
             >
-              Pick it up <SuitGlyph suit={state.upcard.suit} size={16} />
+              {isDealer ? 'Pick it up' : `Have ${dealerName} pick it up`}{' '}
+              <SuitGlyph suit={state.upcard.suit} size={16} />
             </button>
             <button
               onClick={onPass}

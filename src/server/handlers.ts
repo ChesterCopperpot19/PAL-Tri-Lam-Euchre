@@ -242,11 +242,11 @@ function scheduleBotTick(io: IO, room: Room) {
   }, delay);
 }
 
-// If it's an absent or idle human's turn, the server plays a sensible move for
-// them after a delay so the game never freezes. Disconnected players get a short
-// window (in case they reconnect); connected-but-idle players get longer.
-const AFK_TURN_MS = 30_000;
-const DISCONNECTED_TURN_MS = 10_000;
+// A *present* player has unlimited time to act — we never auto-play for them.
+// The only safety net is for a seat whose human has DISCONNECTED: after a short
+// grace (enough to reconnect from a refresh / dropped wifi) a bot plays their
+// turn so the table doesn't freeze waiting on someone who's gone.
+const DISCONNECTED_TURN_MS = 20_000;
 
 const ACTIONABLE_PHASES = new Set(['BIDDING_1', 'BIDDING_2', 'DEALER_DISCARD', 'PLAYING']);
 
@@ -260,8 +260,8 @@ function scheduleHumanTurnTimer(io: IO, room: Room) {
   const seated = room.seats[turnSeat];
   if (!seated || seated.isBot) return; // bots are handled by scheduleBotTick
   if (room.state.sittingOut.includes(turnSeat)) return;
+  if (seated.socketId) return; // connected human → unlimited time, no auto-play
 
-  const delay = seated.socketId ? AFK_TURN_MS : DISCONNECTED_TURN_MS;
   room.turnTimer = setTimeout(() => {
     room.turnTimer = null;
     if (!roomManager.get(room.code)) return; // room gone
@@ -280,7 +280,7 @@ function scheduleHumanTurnTimer(io: IO, room: Room) {
       // eslint-disable-next-line no-console
       console.error(`auto-play (absent human) failed in room ${room.code}:`, (e as Error).message);
     }
-  }, delay);
+  }, DISCONNECTED_TURN_MS);
 }
 
 function makeBotName(usedNames: Set<string>): string {

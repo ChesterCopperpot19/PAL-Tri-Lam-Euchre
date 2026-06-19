@@ -16,6 +16,7 @@ import type { RoomSnapshot, ChatMessage } from '@/lib/shared-types';
 import type { SeatIndex, Suit } from '@/server/engine/types';
 import { teamName, tricksBySeat } from '@/lib/format';
 import { sortHand } from '@/lib/hand-sort';
+import { playPing, unlockAudio } from '@/lib/sound';
 import Chat from './Chat';
 
 type Handlers = {
@@ -90,6 +91,20 @@ export default function Table({
   const inPlayPhase =
     state.phase === 'DEALER_DISCARD' || state.phase === 'PLAYING';
 
+  // Is it actually the viewer's moment to act? (drives the banner + ping)
+  const actionablePhase =
+    state.phase === 'BIDDING_1' ||
+    state.phase === 'BIDDING_2' ||
+    state.phase === 'DEALER_DISCARD' ||
+    state.phase === 'PLAYING';
+  const isMyTurnNow = myTurn && actionablePhase && !viewerSittingOut;
+  const turnLabel =
+    state.phase === 'DEALER_DISCARD'
+      ? 'Your turn — discard a card'
+      : state.phase === 'PLAYING'
+        ? 'Your turn to play'
+        : 'Your turn to bid';
+
   // After a trick is taken, hold all 4 cards visible for ~1.2s, then animate them
   // toward the winning seat for ~0.75s. Suppresses the hand-end modal during the
   // animation so the final trick is fully visible before the summary appears.
@@ -131,6 +146,54 @@ export default function Table({
     }
   }, [state.completedTricks.length]);
 
+  // Sound preference (persisted). Default on.
+  const [soundOn, setSoundOn] = useState(true);
+  useEffect(() => {
+    try {
+      setSoundOn(localStorage.getItem('euchre.sound') !== 'off');
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const soundOnRef = useRef(soundOn);
+  soundOnRef.current = soundOn;
+
+  // Browsers block audio until the user interacts — unlock on the first gesture.
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  // Ping the moment it becomes the viewer's turn (only the player whose turn it is).
+  const prevMyTurnRef = useRef(false);
+  useEffect(() => {
+    if (isMyTurnNow && !prevMyTurnRef.current && soundOnRef.current) {
+      playPing();
+    }
+    prevMyTurnRef.current = isMyTurnNow;
+  }, [isMyTurnNow]);
+
+  function toggleSound() {
+    setSoundOn((on) => {
+      const next = !on;
+      try {
+        localStorage.setItem('euchre.sound', next ? 'on' : 'off');
+      } catch {
+        /* ignore */
+      }
+      if (next) {
+        unlockAudio();
+        playPing(); // confirm it's audible
+      }
+      return next;
+    });
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Top bar */}
@@ -154,6 +217,15 @@ export default function Table({
           </div>
           <TrumpIndicator trump={state.trump} />
           <button
+            onClick={toggleSound}
+            className="text-base leading-none hover:opacity-80"
+            aria-label={soundOn ? 'Mute turn sound' : 'Unmute turn sound'}
+            aria-pressed={soundOn}
+            title={soundOn ? 'Turn sound on — tap to mute' : 'Turn sound off — tap to unmute'}
+          >
+            {soundOn ? '🔔' : '🔕'}
+          </button>
+          <button
             onClick={handlers.onLeave}
             className="text-xs text-white/60 hover:text-white"
           >
@@ -168,6 +240,21 @@ export default function Table({
         <span className="text-white/70 text-xs truncate max-w-[40%]" title={ewName}>{ewName}</span>
         <span className="font-display text-gold text-lg leading-none">{state.scores.EW}</span>
       </div>
+
+      {/* Big, unmistakable "it's your turn" banner — only for the player to act. */}
+      {isMyTurnNow && (
+        <div
+          role="status"
+          aria-live="assertive"
+          className="w-full px-3 py-2.5 flex items-center justify-center gap-3 bg-gold text-black shadow-lg border-y-2 border-yellow-200 your-turn-banner"
+        >
+          <span aria-hidden className="inline-block w-2.5 h-2.5 rounded-full bg-black/80 animate-pulse" />
+          <span className="font-display text-xl sm:text-3xl font-semibold tracking-wide uppercase">
+            {turnLabel}
+          </span>
+          <span aria-hidden className="inline-block w-2.5 h-2.5 rounded-full bg-black/80 animate-pulse" />
+        </div>
+      )}
 
       {/* Prominent trump banner — visible to everyone once trump is set.
           Keyed on trump so a new hand's trump remounts the banner and
