@@ -75,6 +75,63 @@ export function RadarChart({ axes, raw }: { axes: RadarAxes; raw: RadarAxes }) {
   );
 }
 
+/** Two profiles overlaid for compare mode. */
+export function RadarCompare({
+  a,
+  b,
+  labelA,
+  labelB,
+}: {
+  a: RadarAxes;
+  b: RadarAxes;
+  labelA: string;
+  labelB: string;
+}) {
+  const data = {
+    labels: RADAR_LABELS,
+    datasets: [
+      {
+        label: labelA,
+        data: RADAR_ORDER.map((k) => a[k]),
+        borderColor: GOLD,
+        backgroundColor: 'rgba(255,184,28,0.15)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointBackgroundColor: GOLD,
+      },
+      {
+        label: labelB,
+        data: RADAR_ORDER.map((k) => b[k]),
+        borderColor: '#7aa2ff',
+        backgroundColor: 'rgba(122,162,255,0.15)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointBackgroundColor: '#7aa2ff',
+      },
+    ],
+  };
+  const options: ChartOptions<'radar'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: true, labels: { color: TICK, boxWidth: 12 } } },
+    scales: {
+      r: {
+        min: 0,
+        max: 100,
+        ticks: { display: false, stepSize: 20 },
+        grid: { color: GRID },
+        angleLines: { color: GRID },
+        pointLabels: { color: TICK, font: { size: 11 } },
+      },
+    },
+  };
+  return (
+    <div style={{ height: 300 }}>
+      <Radar data={data} options={options} />
+    </div>
+  );
+}
+
 export function EloLineChart({ history }: { history: EloPoint[] }) {
   const data = {
     labels: history.map((_, i) => `${i + 1}`),

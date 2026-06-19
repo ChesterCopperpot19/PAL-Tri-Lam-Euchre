@@ -10,11 +10,13 @@ import {
   computeDuos,
   computeHeadToHead,
   computeSuperlatives,
+  filterMatches,
   sortPlayers,
   type Superlative,
 } from '@/lib/stats-analytics';
 import { computeElo, mostImproved } from '@/lib/stats-elo';
 import { computeBadges } from '@/lib/stats-achievements';
+import { playersToCSV } from '@/lib/stats-csv';
 import SuperlativeCards from '@/components/stats/SuperlativeCards';
 import Leaderboard, { type RankedRow, type LeaderKey } from '@/components/stats/Leaderboard';
 import AchievementsStrip from '@/components/stats/AchievementsStrip';
@@ -73,6 +75,11 @@ export default function StatsPage() {
   const [sortKey, setSortKey] = useState<LeaderKey>('rating');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  // Filters
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [source, setSource] = useState<'all' | 'app' | 'manual'>('all');
+
   // Charts render client-only (canvas), so gate them until after mount.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -96,11 +103,21 @@ export default function StatsPage() {
   }
 
   const allMatches = useMemo<MatchRecord[]>(() => data?.matches ?? [], [data]);
-  const human = useMemo(() => humanGames(allMatches), [allMatches]);
-  const players = useMemo(() => computePlayers(allMatches), [allMatches]);
-  const duos = useMemo(() => computeDuos(allMatches), [allMatches]);
-  const h2h = useMemo(() => computeHeadToHead(allMatches), [allMatches]);
-  const elo = useMemo(() => computeElo(allMatches), [allMatches]);
+  // Apply the date/source filters before computing anything.
+  const matches = useMemo(
+    () =>
+      filterMatches(allMatches, {
+        from: dateFrom ? Date.parse(dateFrom) : undefined,
+        to: dateTo ? Date.parse(dateTo) + 86_399_999 : undefined, // include the whole end day
+        source: source === 'all' ? undefined : source,
+      }),
+    [allMatches, dateFrom, dateTo, source]
+  );
+  const human = useMemo(() => humanGames(matches), [matches]);
+  const players = useMemo(() => computePlayers(matches), [matches]);
+  const duos = useMemo(() => computeDuos(matches), [matches]);
+  const h2h = useMemo(() => computeHeadToHead(matches), [matches]);
+  const elo = useMemo(() => computeElo(matches), [matches]);
   const badges = useMemo(() => computeBadges(players, elo), [players, elo]);
   const improved = useMemo(() => mostImproved(elo), [elo]);
 
@@ -157,6 +174,17 @@ export default function StatsPage() {
       setSortKey(key);
       setSortDir(key === 'name' ? 'asc' : 'desc');
     }
+  }
+
+  function downloadCSV() {
+    const csv = playersToCSV(players, elo);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'pal-trilam-euchre-stats.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   const recent = useMemo(
@@ -254,6 +282,66 @@ export default function StatsPage() {
                 Filters the best/worst partnership lists
               </div>
             </label>
+          </section>
+
+          {/* Filters + actions */}
+          <section className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-wrap items-end gap-3">
+            <label className="text-xs text-white/60">
+              <span className="uppercase tracking-wider block mb-1">From</span>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 outline-none focus:border-gold text-white"
+              />
+            </label>
+            <label className="text-xs text-white/60">
+              <span className="uppercase tracking-wider block mb-1">To</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 outline-none focus:border-gold text-white"
+              />
+            </label>
+            <label className="text-xs text-white/60">
+              <span className="uppercase tracking-wider block mb-1">Games</span>
+              <select
+                value={source}
+                onChange={(e) => setSource(e.target.value as 'all' | 'app' | 'manual')}
+                className="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 outline-none focus:border-gold text-white"
+              >
+                <option value="all">All</option>
+                <option value="app">Online</option>
+                <option value="manual">In person</option>
+              </select>
+            </label>
+            {(dateFrom || dateTo || source !== 'all') && (
+              <button
+                onClick={() => {
+                  setDateFrom('');
+                  setDateTo('');
+                  setSource('all');
+                }}
+                className="text-xs text-white/60 hover:text-white border border-white/15 rounded-lg px-2.5 py-1.5"
+              >
+                Clear filters
+              </button>
+            )}
+            <div className="ml-auto flex gap-2">
+              <Link
+                href="/stats/compare"
+                className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
+              >
+                ⚖️ Compare
+              </Link>
+              <button
+                onClick={downloadCSV}
+                className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
+              >
+                ⬇️ CSV
+              </button>
+            </div>
           </section>
 
           {/* Leaderboard */}
