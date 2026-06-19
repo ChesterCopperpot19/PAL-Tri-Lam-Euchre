@@ -1,5 +1,7 @@
 'use client';
+import { Fragment } from 'react';
 import type { Badge } from '@/lib/stats-achievements';
+import PlayerLink from './PlayerLink';
 
 /** Horizontal strip of earned badges. */
 export default function AchievementsStrip({ badges }: { badges: Badge[] }) {
@@ -21,7 +23,12 @@ export default function AchievementsStrip({ badges }: { badges: Badge[] }) {
           <div className="text-sm font-semibold text-gold mt-1.5">{b.name}</div>
           <div className="text-[11px] text-white/45 leading-snug">{b.desc}</div>
           <div className="text-xs text-white/85 mt-1.5 line-clamp-2" title={b.holders.join(', ')}>
-            {b.holders.join(', ')}
+            {b.holders.map((h, i) => (
+              <Fragment key={h}>
+                {i > 0 && ', '}
+                <PlayerLink name={h} />
+              </Fragment>
+            ))}
           </div>
         </div>
       ))}

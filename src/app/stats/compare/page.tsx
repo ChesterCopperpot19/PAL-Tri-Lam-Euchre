@@ -8,6 +8,7 @@ import { computePlayers, type PlayerRow } from '@/lib/stats-analytics';
 import { computeElo } from '@/lib/stats-elo';
 import { computeRadar, type RadarAxes } from '@/lib/stats-profile';
 import { RadarCompare } from '@/components/stats/ProfileCharts';
+import PlayerLink from '@/components/stats/PlayerLink';
 
 const LEAGUE = '__league__';
 const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
@@ -166,9 +167,11 @@ export default function ComparePage() {
                   <thead>
                     <tr className="text-white/55 text-[10px] uppercase tracking-wider">
                       <th className="text-left py-1" />
-                      <th className="text-right py-1 px-2 text-gold">{ea.label}</th>
+                      <th className="text-right py-1 px-2 text-gold">
+                        {a === LEAGUE ? ea.label : <PlayerLink name={ea.label} />}
+                      </th>
                       <th className="text-right py-1 px-2" style={{ color: '#7aa2ff' }}>
-                        {eb.label}
+                        {b === LEAGUE ? eb.label : <PlayerLink name={eb.label} />}
                       </th>
                     </tr>
                   </thead>

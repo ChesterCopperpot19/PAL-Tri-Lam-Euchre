@@ -20,6 +20,7 @@ import { playersToCSV } from '@/lib/stats-csv';
 import SuperlativeCards from '@/components/stats/SuperlativeCards';
 import Leaderboard, { type RankedRow, type LeaderKey } from '@/components/stats/Leaderboard';
 import AchievementsStrip from '@/components/stats/AchievementsStrip';
+import PlayerLink from '@/components/stats/PlayerLink';
 import DuosSection from '@/components/stats/DuosSection';
 import FrenemyTable from '@/components/stats/FrenemyTable';
 import PartnershipHeatmap from '@/components/stats/PartnershipHeatmap';
@@ -431,11 +432,23 @@ export default function StatsPage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className={nsWon ? 'text-gold font-medium' : 'text-white/70'}>
-                          {ns.join(' & ')} {nsWon && '👑'}
+                          {ns.map((n, i) => (
+                            <span key={n}>
+                              {i > 0 && <span className="text-white/40"> &amp; </span>}
+                              <PlayerLink name={n} />
+                            </span>
+                          ))}{' '}
+                          {nsWon && '👑'}
                         </span>
                         <span className="text-white/40">vs</span>
                         <span className={!nsWon ? 'text-gold font-medium' : 'text-white/70'}>
-                          {ew.join(' & ')} {!nsWon && '👑'}
+                          {ew.map((n, i) => (
+                            <span key={n}>
+                              {i > 0 && <span className="text-white/40"> &amp; </span>}
+                              <PlayerLink name={n} />
+                            </span>
+                          ))}{' '}
+                          {!nsWon && '👑'}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">

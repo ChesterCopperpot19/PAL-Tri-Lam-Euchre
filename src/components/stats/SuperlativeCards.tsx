@@ -1,5 +1,6 @@
 'use client';
 import type { Superlative } from '@/lib/stats-analytics';
+import PlayerLink from './PlayerLink';
 
 /** The "narrative layer" — a row of award cards highlighting standout players. */
 export default function SuperlativeCards({ awards }: { awards: Superlative[] }) {
@@ -25,7 +26,7 @@ export default function SuperlativeCards({ awards }: { awards: Superlative[] }) 
               </span>
             </div>
             <div className="font-display text-lg sm:text-xl text-white leading-tight truncate" title={a.player ?? ''}>
-              {a.player ?? '—'}
+              {a.player ? <PlayerLink name={a.player} /> : '—'}
             </div>
             <div className="text-sm text-white/90 font-medium">{a.value}</div>
             <div className="text-[11px] text-white/50 leading-snug mt-0.5">

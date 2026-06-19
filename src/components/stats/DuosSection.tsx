@@ -1,5 +1,6 @@
 'use client';
 import type { DuoRow } from '@/lib/stats-analytics';
+import PlayerLink from './PlayerLink';
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
@@ -9,7 +10,8 @@ function DuoLine({ d, rank }: { d: DuoRow; rank: number }) {
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-white/40 text-xs w-4 text-right tabular-nums">{rank}</span>
         <span className="text-sm text-white/90 truncate" title={`${d.a} & ${d.b}`}>
-          {d.a} <span className="text-white/40">&amp;</span> {d.b}
+          <PlayerLink name={d.a} /> <span className="text-white/40">&amp;</span>{' '}
+          <PlayerLink name={d.b} />
         </span>
       </div>
       <div className="text-xs whitespace-nowrap">

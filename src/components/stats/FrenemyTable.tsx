@@ -1,5 +1,6 @@
 'use client';
 import type { H2HRow } from '@/lib/stats-analytics';
+import PlayerLink from './PlayerLink';
 
 /**
  * The "Frenemy Metric" — head-to-head records between two players who sat on
@@ -37,9 +38,9 @@ export default function FrenemyTable({
             className="flex items-center justify-between gap-2 py-1.5 border-t border-white/5 text-sm"
           >
             <div className="min-w-0 truncate">
-              <span className={aLeads ? 'text-gold font-medium' : 'text-white/85'}>{r.a}</span>
+              <PlayerLink name={r.a} className={aLeads ? 'text-gold font-medium' : 'text-white/85'} />
               <span className="text-white/40"> vs </span>
-              <span className={bLeads ? 'text-gold font-medium' : 'text-white/85'}>{r.b}</span>
+              <PlayerLink name={r.b} className={bLeads ? 'text-gold font-medium' : 'text-white/85'} />
             </div>
             <div className="whitespace-nowrap tabular-nums">
               <span className={aLeads ? 'text-gold font-semibold' : 'text-white/85'}>{r.aWins}</span>

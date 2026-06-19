@@ -4,6 +4,7 @@
 // and scrolls horizontally on a phone. Color runs red → amber → green by win %.
 
 import { duoLookup, type DuoRow, type PlayerRow } from '@/lib/stats-analytics';
+import PlayerLink from './PlayerLink';
 
 /** red (0%) → amber (50%) → green (100%) via hue, dark enough for white text. */
 function winColor(pct: number): string {
@@ -49,7 +50,7 @@ export default function PartnershipHeatmap({
                 className={`${cell} text-[10px] text-white/70 font-medium align-bottom`}
                 title={n}
               >
-                <span className="block truncate px-0.5">{n}</span>
+                <PlayerLink name={n} className="block truncate px-0.5" />
               </th>
             ))}
           </tr>
@@ -61,7 +62,7 @@ export default function PartnershipHeatmap({
                 className="sticky left-0 z-10 bg-black/40 text-right pr-2 text-[11px] text-white/70 font-medium whitespace-nowrap max-w-[90px] truncate"
                 title={rowName}
               >
-                {rowName}
+                <PlayerLink name={rowName} />
               </th>
               {names.map((colName) => {
                 if (rowName === colName) {
