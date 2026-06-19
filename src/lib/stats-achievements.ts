@@ -49,11 +49,6 @@ export function computeBadges(players: PlayerRow[], elo: Map<string, EloResult>)
   const ranked = [...elo.values()].filter((r) => !r.provisional).sort((a, b) => b.rating - a.rating);
   if (ranked.length) add('top-dog', '👑', 'Top Dog', 'Highest Elo rating', 'fun', [ranked[0].name]);
 
-  const hot = players.slice().sort((a, b) => b.currentStreak - a.currentStreak)[0];
-  if (hot && hot.currentStreak >= 3) {
-    add('hot-hand', '♨️', 'Hot Hand', `Riding a ${hot.currentStreak}-game win streak`, 'fun', [hot.name]);
-  }
-
   return badges;
 }
 

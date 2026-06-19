@@ -323,7 +323,6 @@ export function computeSuperlatives(
 
   const anchor = top(qualified, (p) => p.winPct + p.games / 1e6); // win% then games
   const workhorse = top(players, (p) => p.games);
-  const hot = top(players, (p) => p.currentStreak); // most positive
   const cold = top(players, (p) => -p.currentStreak); // most negative
   const sharp = top(
     players.filter((p) => p.handsCalled >= Math.max(3, minGames)),
@@ -350,15 +349,6 @@ export function computeSuperlatives(
       player: workhorse && workhorse.games > 0 ? workhorse.name : null,
       value: workhorse && workhorse.games > 0 ? `${workhorse.games}` : '—',
       sub: workhorse && workhorse.games > 0 ? 'games played' : undefined,
-    },
-    {
-      id: 'hot',
-      emoji: '🔥',
-      title: 'Hot Hand',
-      blurb: 'Longest active win streak',
-      player: hot && hot.currentStreak >= 2 ? hot.name : null,
-      value: hot && hot.currentStreak >= 2 ? `${hot.currentStreak}W` : '—',
-      sub: hot && hot.currentStreak >= 2 ? 'in a row' : undefined,
     },
     {
       id: 'cold',

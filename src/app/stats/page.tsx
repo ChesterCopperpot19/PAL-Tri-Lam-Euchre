@@ -124,7 +124,17 @@ export default function StatsPage() {
   const badges = useMemo(() => computeBadges(players, elo), [players, elo]);
   const improved = useMemo(() => mostImproved(elo), [elo]);
 
-  // Superlatives + a Most-Improved card (Elo-based).
+  // Lowest-Elo player among the qualified set (gets the WFEPE card + seahorse).
+  const lowestEloName = useMemo<string | null>(() => {
+    const rated = players
+      .filter((p) => p.games >= minGames)
+      .map((p) => ({ name: p.name, rating: elo.get(p.name)?.rating }))
+      .filter((p): p is { name: string; rating: number } => p.rating != null);
+    if (!rated.length) return null;
+    return rated.reduce((lo, p) => (p.rating < lo.rating ? p : lo)).name;
+  }, [players, elo, minGames]);
+
+  // Superlatives + Most-Improved + WFEPE (Elo-based) cards.
   const superlatives = useMemo<Superlative[]>(() => {
     const base = computeSuperlatives(players, minGames);
     const earned = improved && improved.gain > 0;
@@ -137,8 +147,17 @@ export default function StatsPage() {
       value: earned ? `+${improved!.gain}` : '—',
       sub: earned ? 'Elo over recent games' : undefined,
     };
-    return [mi, ...base];
-  }, [players, minGames, improved]);
+    const wfepe: Superlative = {
+      id: 'wfepe',
+      emoji: '🌊', // rendered as a seahorse in the card
+      title: 'WFEPE',
+      blurb: 'Lowest Elo rating',
+      player: lowestEloName,
+      value: lowestEloName ? `${elo.get(lowestEloName)?.rating ?? '—'}` : '—',
+      sub: lowestEloName ? 'lowest Elo' : undefined,
+    };
+    return [mi, wfepe, ...base];
+  }, [players, minGames, improved, lowestEloName, elo]);
 
   // Merge Elo onto each player for the leaderboard.
   const ranked = useMemo<RankedRow[]>(
@@ -268,6 +287,7 @@ export default function StatsPage() {
                 sortDir={sortDir}
                 onSort={onSort}
                 full={fullStats}
+                seahorseName={lowestEloName}
               />
             )}
           </Section>

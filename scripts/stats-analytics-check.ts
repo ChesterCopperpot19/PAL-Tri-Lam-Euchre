@@ -132,11 +132,10 @@ check('Alice vs Bob: 3 meetings, Alice 2 – Bob 1', () => {
 // ── Superlatives ──
 const sup = computeSuperlatives(players, 3);
 const award = (id: string) => sup.find((s) => s.id === id)!;
-check('Superlatives: Anchor=Dave, Hot=Dave(3W), Due=Carol(2L), Sharp=Alice, Gambler=Bob, Sweeper=Dave', () => {
+check('Superlatives: Anchor=Dave, Due=Carol(2L), Sharp=Alice, Gambler=Bob, Sweeper=Dave', () => {
   assert.equal(award('anchor').player, 'Dave');
   assert.equal(award('anchor').value, '75%');
-  assert.equal(award('hot').player, 'Dave');
-  assert.equal(award('hot').value, '3W');
+  assert.equal(sup.find((s) => s.id === 'hot'), undefined); // Hot Hand removed
   assert.equal(award('cold').player, 'Carol');
   assert.equal(award('cold').value, '2L');
   assert.equal(award('sharp').player, 'Alice');

@@ -1,6 +1,7 @@
 'use client';
 import type { Superlative } from '@/lib/stats-analytics';
 import PlayerLink from './PlayerLink';
+import Seahorse from './Seahorse';
 
 /** The "narrative layer" — a row of award cards highlighting standout players. */
 export default function SuperlativeCards({ awards }: { awards: Superlative[] }) {
@@ -18,9 +19,13 @@ export default function SuperlativeCards({ awards }: { awards: Superlative[] }) 
             }`}
           >
             <div className="flex items-center gap-1.5">
-              <span className="text-lg leading-none" aria-hidden>
-                {a.emoji}
-              </span>
+              {a.id === 'wfepe' ? (
+                <Seahorse size={20} className="text-cyan-300" />
+              ) : (
+                <span className="text-lg leading-none" aria-hidden>
+                  {a.emoji}
+                </span>
+              )}
               <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
                 {a.title}
               </span>

@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import type { PlayerRow, SortKey } from '@/lib/stats-analytics';
+import Seahorse from './Seahorse';
 
 /** A leaderboard row enriched with the player's Elo rating. */
 export type RankedRow = PlayerRow & {
@@ -113,6 +114,7 @@ export default function Leaderboard({
   sortDir,
   onSort,
   full = false,
+  seahorseName = null,
 }: {
   rows: RankedRow[];
   sortKey: LeaderKey;
@@ -120,6 +122,8 @@ export default function Leaderboard({
   onSort: (key: LeaderKey) => void;
   /** Show every stat column (the "all stats" view). */
   full?: boolean;
+  /** Player who gets the WFEPE seahorse (lowest Elo). */
+  seahorseName?: string | null;
 }) {
   const cols = full ? COLS : COLS.filter((c) => !c.extra);
   return (
@@ -164,6 +168,14 @@ export default function Leaderboard({
                     </span>
                   )}
                   {c.render(r)}
+                  {c.align === 'left' && seahorseName && r.name === seahorseName && (
+                    <span
+                      className="inline-block ml-1 align-[-2px] text-cyan-300"
+                      title="WFEPE — lowest Elo"
+                    >
+                      <Seahorse size={14} />
+                    </span>
+                  )}
                 </td>
               ))}
             </tr>
