@@ -79,6 +79,7 @@ export default function StatsPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [source, setSource] = useState<'all' | 'app' | 'manual'>('all');
+  const [fullStats, setFullStats] = useState(false); // leaderboard: all stat columns
 
   // Charts render client-only (canvas), so gate them until after mount.
   const [mounted, setMounted] = useState(false);
@@ -345,13 +346,31 @@ export default function StatsPage() {
           </section>
 
           {/* Leaderboard */}
-          <Section title="Leaderboard" note="Tap any column to sort">
+          <Section
+            title="Leaderboard"
+            note={fullStats ? 'All stats · tap any column to sort' : 'Tap any column to sort'}
+            right={
+              <button
+                onClick={() => setFullStats((v) => !v)}
+                className="text-xs bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5 whitespace-nowrap"
+                aria-pressed={fullStats}
+              >
+                {fullStats ? 'Standard view' : '📊 All stats'}
+              </button>
+            }
+          >
             {sorted.length === 0 ? (
               <p className="text-white/50 text-sm">
                 No players with at least {minGames} games. Lower the “min games” slider.
               </p>
             ) : (
-              <Leaderboard rows={sorted} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <Leaderboard
+                rows={sorted}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                full={fullStats}
+              />
             )}
           </Section>
 
