@@ -21,7 +21,7 @@ function rawAxes(p: PlayerRow): RadarAxes {
   const g = p.games || 1;
   return {
     maker: p.handsCalled ? p.callsWon / p.handsCalled : 0,
-    defense: p.defensiveTricks / g,
+    defense: p.defensiveEuchres / g, // euchres inflicted per game = "Defender Success"
     loner: p.loneCalled ? p.loneWon / p.loneCalled : 0,
     consistency: p.marginStd, // lower is better → inverted when scaled
     aggression: (p.handsCalled + p.loneCalled) / g,

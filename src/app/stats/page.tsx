@@ -78,7 +78,7 @@ export default function StatsPage() {
   // Filters
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [source, setSource] = useState<'all' | 'app' | 'manual'>('all');
+  const [source, setSource] = useState<'all' | 'app' | 'manual' | 'historical'>('all');
   const [fullStats, setFullStats] = useState(false); // leaderboard: all stat columns
 
   // Charts render client-only (canvas), so gate them until after mount.
@@ -309,12 +309,13 @@ export default function StatsPage() {
               <span className="uppercase tracking-wider block mb-1">Games</span>
               <select
                 value={source}
-                onChange={(e) => setSource(e.target.value as 'all' | 'app' | 'manual')}
+                onChange={(e) => setSource(e.target.value as 'all' | 'app' | 'manual' | 'historical')}
                 className="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 outline-none focus:border-gold text-white"
               >
                 <option value="all">All</option>
                 <option value="app">Online</option>
                 <option value="manual">In person</option>
+                <option value="historical">Historical</option>
               </select>
             </label>
             {(dateFrom || dateTo || source !== 'all') && (
@@ -458,6 +459,11 @@ export default function StatsPage() {
                       {m.source === 'manual' && (
                         <span className="text-[10px] uppercase tracking-wider bg-white/10 border border-white/15 rounded px-1 py-0.5">
                           ✏️ in person
+                        </span>
+                      )}
+                      {m.source === 'historical' && (
+                        <span className="text-[10px] uppercase tracking-wider bg-white/10 border border-white/15 rounded px-1 py-0.5">
+                          📜 historical
                         </span>
                       )}
                     </div>

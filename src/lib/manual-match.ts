@@ -62,6 +62,7 @@ export function buildManualMatch(input: ManualMatchInput, id: string, ts: number
     isBot: false,
     tricks: clampInt(p.tricks),
     defensiveTricks: clampInt(p.defensiveTricks),
+    defensiveEuchres: clampInt(p.defensiveEuchres),
     handsCalled: clampInt(p.handsCalled),
     callsWon: clampInt(p.callsWon),
     euchres: clampInt(p.euchres),

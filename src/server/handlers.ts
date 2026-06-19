@@ -95,6 +95,7 @@ function buildMatchRecord(room: Room): MatchRecord {
     const team = TEAM_OF[seat];
     let tricks = 0;
     let defensiveTricks = 0;
+    let defensiveEuchres = 0;
     let handsCalled = 0;
     let callsWon = 0;
     let euchres = 0;
@@ -115,6 +116,8 @@ function buildMatchRecord(room: Room): MatchRecord {
         }
       } else {
         defensiveTricks += t;
+        // We euchred the maker while defending.
+        if (h.euchred && TEAM_OF[h.maker] !== team) defensiveEuchres++;
       }
     }
     return {
@@ -124,6 +127,7 @@ function buildMatchRecord(room: Room): MatchRecord {
       isBot: seatData?.isBot ?? false,
       tricks,
       defensiveTricks,
+      defensiveEuchres,
       handsCalled,
       callsWon,
       euchres,

@@ -41,6 +41,8 @@ export type PlayerMatchStat = {
   isBot: boolean;
   tricks: number;
   defensiveTricks: number;
+  /** Euchres this player's team inflicted on opponents while defending. */
+  defensiveEuchres?: number;
   handsCalled: number;
   callsWon: number;
   euchres: number;
@@ -58,7 +60,7 @@ export type MatchRecord = {
   handsPlayed: number;
   players: PlayerMatchStat[];
   /** How the game was recorded. Absent = played in the app. */
-  source?: 'app' | 'manual';
+  source?: 'app' | 'manual' | 'historical';
 };
 
 /** One player in a manually-logged (in-person) game. Only `name` is required. */
@@ -66,6 +68,7 @@ export type ManualPlayerInput = {
   name: string;
   tricks?: number;
   defensiveTricks?: number;
+  defensiveEuchres?: number;
   handsCalled?: number;
   callsWon?: number;
   euchres?: number;

@@ -27,6 +27,7 @@ export type PlayerRow = {
   winPct: number;
   tricks: number;
   defensiveTricks: number;
+  defensiveEuchres: number; // euchres inflicted on opponents while defending
   handsCalled: number;
   callsWon: number;
   callPct: number;
@@ -130,6 +131,7 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
         losses: 0,
         tricks: 0,
         defensiveTricks: 0,
+        defensiveEuchres: 0,
         handsCalled: 0,
         callsWon: 0,
         euchres: 0,
@@ -158,6 +160,7 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
       a.losses += win ? 0 : 1;
       a.tricks += p.tricks;
       a.defensiveTricks += p.defensiveTricks;
+      a.defensiveEuchres += p.defensiveEuchres ?? 0;
       a.handsCalled += p.handsCalled;
       a.callsWon += p.callsWon;
       a.euchres += p.euchres;
@@ -413,6 +416,7 @@ export type SortKey = keyof Pick<
   | 'pointDiff'
   | 'tricks'
   | 'defensiveTricks'
+  | 'defensiveEuchres'
   | 'handsCalled'
   | 'callsWon'
   | 'callPct'
@@ -430,7 +434,7 @@ export type SortKey = keyof Pick<
 export type MatchFilter = {
   from?: number; // ts inclusive (epoch ms)
   to?: number; // ts inclusive
-  source?: 'app' | 'manual';
+  source?: 'app' | 'manual' | 'historical';
 };
 
 /** Filter matches by date range and/or how they were recorded. */

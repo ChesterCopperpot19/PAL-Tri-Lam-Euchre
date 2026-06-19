@@ -94,6 +94,7 @@ const COLS: Col[] = [
   },
   { key: 'tricks', label: 'Trk', title: 'Total tricks won', extra: true, render: (r) => r.tricks },
   { key: 'defensiveTricks', label: 'Def', title: 'Defensive tricks (won when not the maker)', extra: true, render: (r) => r.defensiveTricks },
+  { key: 'defensiveEuchres', label: '🛡', title: 'Euchres inflicted on opponents while defending', extra: true, render: (r) => r.defensiveEuchres },
   { key: 'handsCalled', label: 'Called', title: 'Hands called (became maker)', extra: true, render: (r) => r.handsCalled },
   { key: 'callsWon', label: 'Made', title: 'Calls won (not euchred)', extra: true, render: (r) => r.callsWon },
   { key: 'callPct', label: 'Call%', title: 'Win rate when calling trump', render: (r) => pct(r.callPct) },
