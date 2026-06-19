@@ -360,8 +360,11 @@ export function attachHandlers(io: IO) {
       try {
         const all = await getMatches();
         const recent = all.slice().reverse(); // most recent first
+        // Send the full history — the dashboard derives every metric client-side
+        // (leaderboard, duos, head-to-head, streaks) and needs all games to do so.
+        // Records are tiny; the store is capped at 5000.
         ack({
-          matches: recent.slice(0, 50),
+          matches: recent,
           players: aggregatePlayers(all),
           totalMatches: all.length,
         });
