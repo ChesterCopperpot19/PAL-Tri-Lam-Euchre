@@ -24,6 +24,7 @@ import PlayerLink from '@/components/stats/PlayerLink';
 import DuosSection from '@/components/stats/DuosSection';
 import FrenemyTable from '@/components/stats/FrenemyTable';
 import PartnershipHeatmap from '@/components/stats/PartnershipHeatmap';
+import PartnershipScatter from '@/components/stats/PartnershipScatter';
 import { WinPctChart, VolumeChart } from '@/components/stats/StatCharts';
 
 function formatDate(ts: number): string {
@@ -397,6 +398,14 @@ export default function StatsPage() {
           {/* Partnership matrix */}
           <Section title="Partnership matrix" note="Win % when two players partner up">
             <PartnershipHeatmap players={players} duos={duos} />
+          </Section>
+
+          {/* Partnership win % by team */}
+          <Section
+            title="Partnership win % by team"
+            note={`Each pairing ranked best to worst · ${duoMin}+ games (use the slider above)`}
+          >
+            <PartnershipScatter duos={duos} minGames={duoMin} />
           </Section>
 
           {/* Dynamic Duos */}
