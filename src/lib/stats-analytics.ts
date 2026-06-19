@@ -39,6 +39,10 @@ export type PlayerRow = {
   longestWinStreak: number;
   longestLossStreak: number;
   lastPlayed: number; // ts of most recent game
+  ppgFor: number; // avg points scored per game (0..10)
+  ppgAgainst: number; // avg points conceded per game
+  pointDiff: number; // ppgFor - ppgAgainst
+  marginStd: number; // std-dev of per-game point margin (lower = more consistent)
 };
 
 /** A two-human partnership (players who shared a team in a game). */
@@ -104,8 +108,16 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
 
   type Acc = Omit<
     PlayerRow,
-    'winPct' | 'callPct' | 'currentStreak' | 'longestWinStreak' | 'longestLossStreak'
-  > & { results: boolean[] };
+    | 'winPct'
+    | 'callPct'
+    | 'currentStreak'
+    | 'longestWinStreak'
+    | 'longestLossStreak'
+    | 'ppgFor'
+    | 'ppgAgainst'
+    | 'pointDiff'
+    | 'marginStd'
+  > & { results: boolean[]; pointsFor: number; pointsAgainst: number; margins: number[] };
   const map = new Map<string, Acc>();
 
   const ensure = (name: string): Acc => {
@@ -126,6 +138,9 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
         loneWon: 0,
         lastPlayed: 0,
         results: [],
+        pointsFor: 0,
+        pointsAgainst: 0,
+        margins: [],
       };
       map.set(name, a);
     }
@@ -136,6 +151,8 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
     for (const p of m.players) {
       const a = ensure(norm(p.name));
       const win = playerWon(p, m);
+      const myScore = m.finalScore[p.team];
+      const oppScore = m.finalScore[p.team === 'NS' ? 'EW' : 'NS'];
       a.games += 1;
       a.wins += win ? 1 : 0;
       a.losses += win ? 0 : 1;
@@ -149,18 +166,34 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
       a.loneWon += p.loneWon;
       a.lastPlayed = Math.max(a.lastPlayed, m.ts);
       a.results.push(win);
+      a.pointsFor += myScore;
+      a.pointsAgainst += oppScore;
+      a.margins.push(myScore - oppScore);
     }
   }
 
   return Array.from(map.values()).map((a) => {
-    const { results, ...rest } = a;
+    const { results, pointsFor, pointsAgainst, margins, ...rest } = a;
+    const g = a.games || 1;
     return {
       ...rest,
       winPct: a.games ? a.wins / a.games : 0,
       callPct: a.handsCalled ? a.callsWon / a.handsCalled : 0,
+      ppgFor: pointsFor / g,
+      ppgAgainst: pointsAgainst / g,
+      pointDiff: (pointsFor - pointsAgainst) / g,
+      marginStd: stdev(margins),
       ...streaks(results),
     };
   });
+}
+
+/** Population standard deviation; 0 for fewer than two samples. */
+function stdev(xs: number[]): number {
+  if (xs.length < 2) return 0;
+  const mean = xs.reduce((s, x) => s + x, 0) / xs.length;
+  const variance = xs.reduce((s, x) => s + (x - mean) ** 2, 0) / xs.length;
+  return Math.sqrt(variance);
 }
 
 /** Current + longest win/loss streaks from a chronological win/loss list. */
@@ -375,6 +408,8 @@ export type SortKey = keyof Pick<
   | 'wins'
   | 'losses'
   | 'winPct'
+  | 'ppgFor'
+  | 'pointDiff'
   | 'tricks'
   | 'handsCalled'
   | 'callPct'
@@ -383,6 +418,24 @@ export type SortKey = keyof Pick<
   | 'loneWon'
   | 'currentStreak'
 >;
+
+// ── Filtering ────────────────────────────────────────────────────────────────
+
+export type MatchFilter = {
+  from?: number; // ts inclusive (epoch ms)
+  to?: number; // ts inclusive
+  source?: 'app' | 'manual';
+};
+
+/** Filter matches by date range and/or how they were recorded. */
+export function filterMatches(matches: MatchRecord[], f: MatchFilter): MatchRecord[] {
+  return matches.filter((m) => {
+    if (f.from !== undefined && m.ts < f.from) return false;
+    if (f.to !== undefined && m.ts > f.to) return false;
+    if (f.source && (m.source ?? 'app') !== f.source) return false;
+    return true;
+  });
+}
 
 export function sortPlayers(rows: PlayerRow[], key: SortKey, dir: 'asc' | 'desc'): PlayerRow[] {
   const mult = dir === 'asc' ? 1 : -1;
