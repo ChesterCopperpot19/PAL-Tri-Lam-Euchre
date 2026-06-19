@@ -34,7 +34,7 @@ export default function LandingPage() {
     }
   }, []);
 
-  // Poll for in-progress rooms every 4 seconds so the landing page stays current.
+  // Poll for in-progress rooms every 2 seconds so the landing page stays current.
   useEffect(() => {
     const socket = getSocket();
     let cancelled = false;
@@ -43,7 +43,7 @@ export default function LandingPage() {
         if (!cancelled) setRooms(list);
       });
     refresh();
-    const id = setInterval(refresh, 4000);
+    const id = setInterval(refresh, 2000);
     return () => {
       cancelled = true;
       clearInterval(id);
