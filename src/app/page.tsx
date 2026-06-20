@@ -91,12 +91,9 @@ export default function LandingPage() {
         <div className="text-[11px] uppercase tracking-[0.35em] text-white/50">
           Welcome to the
         </div>
-        <h1 className="font-display text-3xl sm:text-4xl text-gold tracking-wide mb-1 leading-tight">
+        <h1 className="font-display text-3xl sm:text-4xl text-gold tracking-wide mb-6 leading-tight">
           PAL/Tri-Lam Euchre Club
         </h1>
-        <p className="text-white/70 mb-6 text-sm sm:text-base">
-          Four players, two teams, ten points. Bid sharp, lead bold.
-        </p>
 
         <label className="block mb-4">
           <span className="text-sm text-white/80">Your name</span>
