@@ -59,6 +59,9 @@ export default function RoomPage() {
   const snapshotRef = useRef<RoomSnapshot | null>(null);
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
   const toastIdRef = useRef(0);
+  // The "going alone" gag: a full-screen photo for 5s whenever a loner is called.
+  const [lonerFx, setLonerFx] = useState(false);
+  const lonerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!playerId) return;
@@ -73,6 +76,16 @@ export default function RoomPage() {
     }
 
     function onEvent(ev: string) {
+      // A loner call (order-up or suit-call, going alone) fires the 5-second
+      // full-screen "going alone" photo for everyone in the room — bots
+      // included, since every bid flows through this same room:event.
+      const p = ev.split(':');
+      if ((p[0] === 'bid_order' || p[0] === 'bid_call') && p[3] === 'alone') {
+        setLonerFx(true);
+        if (lonerTimerRef.current) clearTimeout(lonerTimerRef.current);
+        lonerTimerRef.current = setTimeout(() => setLonerFx(false), 5000);
+      }
+
       const text = eventText(ev, snapshotRef.current);
       if (!text) return;
       const id = ++toastIdRef.current;
@@ -148,6 +161,7 @@ export default function RoomPage() {
       socket.off('room:event', onEvent);
       socket.off('connect', onConnect);
       document.removeEventListener('visibilitychange', onVisibility);
+      if (lonerTimerRef.current) clearTimeout(lonerTimerRef.current);
     };
   }, [code, playerId, name, role]);
 
@@ -198,6 +212,24 @@ export default function RoomPage() {
 
   return (
     <>
+      {/* "Going alone" gag — full-screen photo for 5 seconds on any loner call. */}
+      {lonerFx && (
+        <div
+          className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/90 px-3 fade-in"
+          aria-hidden
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/loner.jpg"
+            alt=""
+            className="max-h-[82vh] max-w-[94vw] rounded-xl border-2 border-gold object-contain shadow-2xl"
+          />
+          <div className="mt-4 font-display text-3xl sm:text-4xl uppercase tracking-[0.2em] text-gold drop-shadow">
+            Going Alone
+          </div>
+        </div>
+      )}
+
       {errorBanner && (
         <div className="fixed top-2 left-1/2 -translate-x-1/2 z-50 bg-red-500/90 text-white text-sm px-3 py-1.5 rounded-md shadow-lg">
           {errorBanner}
