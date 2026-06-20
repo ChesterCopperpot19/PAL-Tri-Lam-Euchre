@@ -110,6 +110,10 @@ export default function Table({
   // animation so the final trick is fully visible before the summary appears.
   const [pendingTrick, setPendingTrick] = useState<PendingTrick | null>(null);
   const prevTrickCountRef = useRef(0);
+  // The "loner made" gag: a 5-second photo at hand-end when someone wins a loner
+  // (went alone and was not euchred).
+  const [lonerWonFx, setLonerWonFx] = useState(false);
+  const lonerWonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const ct = state.completedTricks;
     const len = ct.length;
@@ -155,6 +159,20 @@ export default function Table({
       prevTrickCountRef.current = len;
     }
   }, [state.completedTricks.length]);
+
+  // When a hand ends on a *made* loner (went alone and not euchred), flash the
+  // celebration photo for 5 seconds. lastHand is set in the same state update
+  // that completes the 5th trick, so completedTricks.length === 5 is the cue.
+  useEffect(() => {
+    const last = state.lastHand;
+    if (state.completedTricks.length === 5 && last && last.alone && !last.euchred) {
+      setLonerWonFx(true);
+      if (lonerWonTimerRef.current) clearTimeout(lonerWonTimerRef.current);
+      lonerWonTimerRef.current = setTimeout(() => setLonerWonFx(false), 5000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.completedTricks.length]);
+  useEffect(() => () => { if (lonerWonTimerRef.current) clearTimeout(lonerWonTimerRef.current); }, []);
 
   // Sound preference (persisted). Default on.
   const [soundOn, setSoundOn] = useState(true);
@@ -470,7 +488,7 @@ export default function Table({
           myId={myId}
         />
       )}
-      {state.phase === 'GAME_OVER' && !pendingTrick && (
+      {state.phase === 'GAME_OVER' && !pendingTrick && !lonerWonFx && (
         <GameOver
           state={state}
           members={snapshot.members}
@@ -478,6 +496,24 @@ export default function Table({
           onRematch={handlers.onRematch}
           onLeave={handlers.onLeave}
         />
+      )}
+
+      {/* "Loner made" gag — full-screen photo for 5 seconds when someone wins a loner. */}
+      {lonerWonFx && (
+        <div
+          className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 px-3 fade-in"
+          aria-hidden
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/loner-won.jpg"
+            alt=""
+            className="max-h-[80vh] max-w-[94vw] rounded-xl border-2 border-gold object-contain shadow-2xl"
+          />
+          <div className="mt-4 font-display text-3xl sm:text-4xl uppercase tracking-[0.2em] text-gold drop-shadow text-center">
+            {state.lastHand ? `${memberAt(state.lastHand.maker)?.name ?? 'Someone'} made a loner!` : 'Loner made!'}
+          </div>
+        </div>
       )}
     </div>
   );
