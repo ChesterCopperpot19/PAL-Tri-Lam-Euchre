@@ -74,7 +74,7 @@ export default function HandSummary({
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="bg-[#00133d] border border-gold/40 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-3 outline-none"
+        className="bg-[#141B4D] border border-gold/40 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-3 outline-none"
       >
         <div className="text-center">
           <div className="text-xs uppercase tracking-widest text-white/60">Hand complete</div>

@@ -5,24 +5,28 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Pitt Script identity — Pitt Royal #003594 + Pitt Gold #FFB81C only.
-        // All blues are darkenings/lightenings of Pitt Royal, no Heritage Navy.
+        // Pitt Athletics palette (official ID manual). Primary: Pitt Royal
+        // #003594 (PMS 661 C) + Pitt Gold #FFB81C (PMS 1235 C). The darks and
+        // grey are the manual's secondary + tonal palette.
         pitt: {
-          blue: '#003594',     // Pitt Royal (PMS 287 C) — primary
-          blueDk: '#001f5c',   // Royal-darkened
-          blueLt: '#1f4ea3',   // Royal-lightened (hovers)
-          deep: '#00133d',     // Modal backgrounds
-          edge: '#00081f',     // Page edges
-          gold: '#FFB81C',     // Pitt Gold (PMS 1235 C) — accent
-          goldDk: '#cc9213',   // Gold-darkened
+          blue: '#003594',       // Pitt Royal (PMS 661 C) — primary
+          blueDk: '#141B4D',     // Dark Royal (PMS 2766 C) — secondary
+          blueLt: '#1f4ea3',     // Royal-lightened (hovers; derived tint)
+          deep: '#141B4D',       // Modal backgrounds → Dark Royal
+          edge: '#0A0C1E',       // Page edges (deep Dark Royal)
+          gold: '#FFB81C',       // Pitt Gold (PMS 1235 C) — accent
+          goldDk: '#B58500',     // Dark Gold (PMS 125 C)
+          grey: '#A2AAAD',       // Grey (PMS 429 C)
+          anthracite: '#373A36', // Anthracite (PMS 447 C)
+          ink: '#2C2A29',        // Black Neutral (PMS Process Black C)
         },
         card: {
           face: '#fdfcf7',
-          back: '#001f5c',
+          back: '#141B4D',
         },
       },
       fontFamily: {
-        display: ['var(--font-display)', 'ui-serif', 'Georgia', 'serif'],
+        display: ['var(--font-display)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         body: ['var(--font-body)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       boxShadow: {

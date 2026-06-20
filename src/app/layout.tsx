@@ -3,17 +3,18 @@ import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 
 // Self-hosted variable fonts (committed under src/fonts) — no network needed
-// at build or runtime. These were previously declared in Tailwind but never
-// actually loaded, so headings silently fell back to Georgia and body text to
-// the system font.
+// at build or runtime. Per the Pitt Athletics brand: Oswald approximates the
+// condensed, collegiate display type, and Archivo stands in for the DINPro
+// supporting typeface used for body copy. (The actual Cathedral Font and Pitt
+// Script faces are proprietary/licensed, so we use free, on-brand substitutes.)
 const displayFont = localFont({
-  src: '../fonts/cormorant-garamond-latin.woff2',
-  weight: '300 700',
+  src: '../fonts/oswald-latin.woff2',
+  weight: '200 700',
   variable: '--font-display',
   display: 'swap',
 });
 const bodyFont = localFont({
-  src: '../fonts/inter-latin.woff2',
+  src: '../fonts/archivo-latin.woff2',
   weight: '100 900',
   variable: '--font-body',
   display: 'swap',

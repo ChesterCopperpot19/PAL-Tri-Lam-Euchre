@@ -28,7 +28,7 @@ export default function GameOver({
       aria-label={`Game over — ${winner} win`}
       className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto"
     >
-      <div className="bg-[#00133d] border border-gold rounded-2xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl my-auto">
+      <div className="bg-[#141B4D] border border-gold rounded-2xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl my-auto">
         <div className="text-center">
           <div className="text-xs uppercase tracking-[0.3em] text-white/60">Game over</div>
           <h2 className="font-display text-3xl sm:text-5xl text-gold mt-2 leading-tight break-words">

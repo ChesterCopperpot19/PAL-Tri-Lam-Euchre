@@ -72,7 +72,7 @@ export default function Lobby({
           aria-label="Quit this game?"
           className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
         >
-          <div className="bg-[#00133d] border border-gold/40 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+          <div className="bg-[#141B4D] border border-gold/40 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
             <div className="font-display text-2xl text-gold">Quit this game?</div>
             <p className="text-sm text-white/75">
               You&apos;ll leave this room right away. If you&apos;re the last person here,
