@@ -127,6 +127,16 @@ export default function Table({
           winnerSeat: trick.winner as SeatIndex,
           animFly: false,
         });
+        // The game-winning trick: freeze it on the felt for 3s so everyone can
+        // see how the final hand was won, then reveal the winner screen (the
+        // GameOver modal is gated on !pendingTrick below). Held static — no fly.
+        if (state.phase === 'GAME_OVER') {
+          const holdT = setTimeout(() => {
+            setPendingTrick(null);
+            prevTrickCountRef.current = len;
+          }, 3000);
+          return () => clearTimeout(holdT);
+        }
         const flyT = setTimeout(() => {
           setPendingTrick((cur) => (cur ? { ...cur, animFly: true } : cur));
         }, 1200);
@@ -460,7 +470,7 @@ export default function Table({
           myId={myId}
         />
       )}
-      {state.phase === 'GAME_OVER' && (
+      {state.phase === 'GAME_OVER' && !pendingTrick && (
         <GameOver
           state={state}
           members={snapshot.members}
