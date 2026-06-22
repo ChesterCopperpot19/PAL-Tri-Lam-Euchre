@@ -1,5 +1,5 @@
 import { legalPlayIds } from './game';
-import { Card, GameState, SeatIndex } from './types';
+import { Card, GameState, HandSummary, SeatIndex } from './types';
 
 export type PublicSeatInfo = {
   /** Public hand size for non-self players, full hand for self (or null if not viewer). */
@@ -7,7 +7,7 @@ export type PublicSeatInfo = {
   hand?: Card[]; // present only for self-view
 };
 
-export type RedactedState = Omit<GameState, 'hands' | 'kitty' | 'seed'> & {
+export type RedactedState = Omit<GameState, 'hands' | 'kitty' | 'seed' | 'bidLog'> & {
   seats: Record<SeatIndex, PublicSeatInfo>;
   /** For player viewers: their legal-play card ids. For spectators: []. */
   legalPlayIds: string[];
@@ -16,6 +16,21 @@ export type RedactedState = Omit<GameState, 'hands' | 'kitty' | 'seed'> & {
   /** Viewer's seat index (0..3) or null for spectator. */
   viewerSeat: SeatIndex | null;
 };
+
+/** Strip the heavy optional capture fields (bids, per-trick cards, up-card) that a
+ *  client never reads — they exist only for server-side stored match records. */
+function slimHand(h: HandSummary): HandSummary {
+  return {
+    trump: h.trump,
+    maker: h.maker,
+    alone: h.alone,
+    tricksByTeam: h.tricksByTeam,
+    tricksBySeat: h.tricksBySeat,
+    pointsAwarded: h.pointsAwarded,
+    euchred: h.euchred,
+    march: h.march,
+  };
+}
 
 /**
  * Build the per-recipient view of game state.
@@ -38,9 +53,13 @@ export function redactState(state: GameState, viewerSeat: SeatIndex | null): Red
       hand: state.hands[viewerSeat].slice(),
     };
   }
-  const { hands: _hands, kitty: _kitty, seed: _seed, ...rest } = state;
+  const { hands: _hands, kitty: _kitty, seed: _seed, bidLog: _bidLog, ...rest } = state;
   return {
     ...rest,
+    // Drop the heavy hand-level capture (bids, per-trick cards) from the client
+    // payload — it's only needed server-side for stored match records.
+    history: rest.history.map(slimHand),
+    lastHand: rest.lastHand ? slimHand(rest.lastHand) : null,
     seats,
     legalPlayIds: viewerSeat === null ? [] : legalPlayIds(state, viewerSeat),
     spectator: viewerSeat === null,

@@ -2,6 +2,7 @@
 // from the server's redact.ts, but everything below is what travels over the wire.
 
 import type { RedactedState } from '@/server/engine/redact';
+import type { HandSummary } from '@/server/engine/types';
 
 export type Role = 'player' | 'spectator';
 
@@ -61,6 +62,13 @@ export type MatchRecord = {
   players: PlayerMatchStat[];
   /** How the game was recorded. Absent = played in the app. */
   source?: 'app' | 'manual' | 'historical';
+  /** When the game started (epoch ms) — game duration = ts - startedTs. */
+  startedTs?: number;
+  /** Rule set in effect for this game. */
+  rules?: { pointsToWin: number; stickTheDealer: boolean };
+  /** Full per-hand log (trump, up-card, bids, tricks, result) for deep analytics.
+   *  Present on games recorded after hand-level tracking was added. */
+  hands?: HandSummary[];
 };
 
 /** One player in a manually-logged (in-person) game. Only `name` is required. */

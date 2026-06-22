@@ -144,6 +144,9 @@ function buildMatchRecord(room: Room): MatchRecord {
     finalScore: { ...room.state.scores },
     handsPlayed: history.length,
     players,
+    startedTs: room.startedTs,
+    rules: { pointsToWin: 10, stickTheDealer: true },
+    hands: history,
   };
 }
 
@@ -517,6 +520,7 @@ export function attachHandlers(io: IO) {
       try {
         const { state, events } = applyAction(room.state, { type: 'START_HAND' });
         room.state = state;
+        room.startedTs = Date.now();
         events.forEach((e) => io.to(room.code).emit('room:event', e));
         broadcast(io, room);
       } catch (e) {

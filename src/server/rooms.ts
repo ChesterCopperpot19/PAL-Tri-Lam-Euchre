@@ -39,6 +39,8 @@ export type Room = {
   lastTrickCount: number;
   /** Guards against recording the same finished game more than once. */
   statsRecorded: boolean;
+  /** When the current game started (epoch ms) — for game-duration stats. */
+  startedTs?: number;
 };
 
 const DISCONNECT_GRACE_MS = 60_000;

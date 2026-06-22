@@ -39,6 +39,7 @@ export function createGame(): GameState {
     trickCounts: { NS: 0, EW: 0 },
     lastHand: null,
     history: [],
+    bidLog: [],
     seed: Math.floor(Math.random() * 0xffffffff),
   };
 }
@@ -85,6 +86,7 @@ export function dealHand(state: GameState): GameState {
     currentTrick: { ledSuit: null, plays: [] },
     trickCounts: { NS: 0, EW: 0 },
     lastHand: null,
+    bidLog: [],
     turn: next(dealer),
     seed: (Math.imul(state.seed, 1664525) + 1013904223) >>> 0, // re-seed for next deal
   };
@@ -133,6 +135,12 @@ function scoreHand(state: GameState): GameState {
     pointsAwarded,
     euchred,
     march,
+    dealer: state.dealer,
+    upcard: state.upcard,
+    orderedUp: state.upcardTaken,
+    bidRound: state.upcardTaken ? 1 : 2,
+    bids: state.bidLog,
+    tricks: state.completedTricks,
   };
   const gameOver = newScores.NS >= POINTS_TO_WIN || newScores.EW >= POINTS_TO_WIN;
   return {
@@ -175,6 +183,7 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
         trump,
         maker: action.seat,
         alone: action.alone,
+        bidLog: [...state.bidLog, { seat: action.seat, action: 'order', round: 1, suit: trump, alone: action.alone }],
         phase: 'DEALER_DISCARD',
         // Add upcard to dealer's hand; dealer will discard one.
         hands: {
@@ -201,12 +210,13 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
               phase: 'BIDDING_2',
               bidActions: 0,
               turn: next(state.dealer),
+              bidLog: [...state.bidLog, { seat: action.seat, action: 'pass', round: 1 }],
             },
             events: ['bid_round1_all_passed'],
           };
         }
         return {
-          state: { ...state, bidActions: acted, turn: next(state.turn) },
+          state: { ...state, bidActions: acted, turn: next(state.turn), bidLog: [...state.bidLog, { seat: action.seat, action: 'pass', round: 1 }] },
           events: ['bid_pass'],
         };
       }
@@ -216,7 +226,7 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
         const acted = state.bidActions + 1;
         // 4 actions in round 2 cannot all be passes since dealer must call.
         return {
-          state: { ...state, bidActions: acted, turn: next(state.turn) },
+          state: { ...state, bidActions: acted, turn: next(state.turn), bidLog: [...state.bidLog, { seat: action.seat, action: 'pass', round: 2 }] },
           events: ['bid_pass2'],
         };
       }
@@ -233,6 +243,7 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
         trump: action.suit,
         maker: action.seat,
         alone: action.alone,
+        bidLog: [...state.bidLog, { seat: action.seat, action: 'call', round: 2, suit: action.suit, alone: action.alone }],
         phase: 'PLAYING',
         turn: next(state.dealer),
       };

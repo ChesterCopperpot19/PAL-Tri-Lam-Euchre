@@ -38,6 +38,16 @@ export type Trick = {
   winner?: SeatIndex;
 };
 
+/** One bidding action within a hand (for hand-level analytics). */
+export type BidEntry = {
+  seat: SeatIndex;
+  action: 'order' | 'pass' | 'call';
+  round: 1 | 2;
+  /** Suit ordered/named (omitted for a pass). */
+  suit?: Suit;
+  alone?: boolean;
+};
+
 export type HandSummary = {
   trump: Suit;
   maker: SeatIndex;
@@ -48,6 +58,20 @@ export type HandSummary = {
   pointsAwarded: { NS: number; EW: number };
   euchred: boolean;
   march: boolean;
+  // ── Richer hand-level capture (optional; populated by scoreHand, stripped
+  //    from the redacted client state to keep live snapshots small). ──
+  /** Dealer's seat this hand. */
+  dealer?: SeatIndex;
+  /** The up-card turned for round-1 bidding. */
+  upcard?: Card | null;
+  /** True if the up-card was ordered up (round 1) — i.e. the dealer picked it up. */
+  orderedUp?: boolean;
+  /** Round trump was decided in: 1 = ordered up, 2 = named suit. */
+  bidRound?: 1 | 2;
+  /** The full bidding sequence for this hand. */
+  bids?: BidEntry[];
+  /** Every completed trick (led suit, plays, winner) for trick-level analytics. */
+  tricks?: Trick[];
 };
 
 export type GameState = {
@@ -86,6 +110,8 @@ export type GameState = {
   lastHand: HandSummary | null;
   /** Per-hand history accumulated across the game (for end-of-game stats). */
   history: HandSummary[];
+  /** Bidding actions for the CURRENT hand (reset each deal; for hand-level stats). */
+  bidLog: BidEntry[];
   /** Random seed used for shuffling — kept for tests/replay. */
   seed: number;
 };
