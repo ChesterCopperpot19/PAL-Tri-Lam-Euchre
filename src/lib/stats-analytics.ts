@@ -44,6 +44,14 @@ export type PlayerRow = {
   ppgAgainst: number; // avg points conceded per game
   pointDiff: number; // ppgFor - ppgAgainst
   marginStd: number; // std-dev of per-game point margin (lower = more consistent)
+  // ── Hand-level behavioral stats. bidPct works from any game (uses handsPlayed);
+  //    the rest derive from the per-hand log and are null until a player has
+  //    hand-logged games. ──
+  bidPct: number; // hands called ÷ hands dealt into — how often they take the call
+  orderPct: number | null; // of their calls, share ordered up in round 1 (vs named round 2)
+  netPtsPerCall: number | null; // net points their calls net the team, per call
+  defEuchreRate: number | null; // euchres inflicted ÷ hands played on defense
+  aloneMakePct: number | null; // loners made ÷ loners called
 };
 
 /** A two-human partnership (players who shared a team in a game). */
@@ -104,6 +112,9 @@ function pairKey(x: string, y: string): { a: string; b: string; key: string } {
 
 // ── Individual leaderboard ───────────────────────────────────────────────────
 
+/** NS = seats 0 & 2, EW = seats 1 & 3. */
+const teamOf = (seat: number): 'NS' | 'EW' => (seat % 2 === 0 ? 'NS' : 'EW');
+
 export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
   const games = chronological(humanGames(matches));
 
@@ -118,7 +129,23 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
     | 'ppgAgainst'
     | 'pointDiff'
     | 'marginStd'
-  > & { results: boolean[]; pointsFor: number; pointsAgainst: number; margins: number[] };
+    | 'bidPct'
+    | 'orderPct'
+    | 'netPtsPerCall'
+    | 'defEuchreRate'
+    | 'aloneMakePct'
+  > & {
+    results: boolean[];
+    pointsFor: number;
+    pointsAgainst: number;
+    margins: number[];
+    handsIn: number; // total hands dealt into (across all games)
+    loggedCalls: number; // calls in hand-logged games
+    callNet: number; // sum of (maker-team pts − defender-team pts) over their calls
+    r1Calls: number; // logged calls that were round-1 order-ups
+    defHands: number; // logged hands defended (opponents called)
+    defEuchresLogged: number; // euchres inflicted on those defended hands
+  };
   const map = new Map<string, Acc>();
 
   const ensure = (name: string): Acc => {
@@ -143,6 +170,12 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
         pointsFor: 0,
         pointsAgainst: 0,
         margins: [],
+        handsIn: 0,
+        loggedCalls: 0,
+        callNet: 0,
+        r1Calls: 0,
+        defHands: 0,
+        defEuchresLogged: 0,
       };
       map.set(name, a);
     }
@@ -172,11 +205,38 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
       a.pointsFor += myScore;
       a.pointsAgainst += oppScore;
       a.margins.push(myScore - oppScore);
+      a.handsIn += m.handsPlayed;
+    }
+    // Hand-level behavioral stats — only games recorded with a per-hand log.
+    if (m.hands && m.hands.length) {
+      const seatName: string[] = [];
+      for (const p of m.players) seatName[p.seat] = norm(p.name);
+      for (const h of m.hands) {
+        const makerTeam = teamOf(h.maker);
+        const defTeam = makerTeam === 'NS' ? 'EW' : 'NS';
+        const net = (h.pointsAwarded[makerTeam] ?? 0) - (h.pointsAwarded[defTeam] ?? 0);
+        for (let seat = 0; seat < 4; seat++) {
+          const a = map.get(seatName[seat]);
+          if (!a) continue;
+          if (seat === h.maker) {
+            a.loggedCalls += 1;
+            a.callNet += net;
+            if (h.bidRound === 1) a.r1Calls += 1;
+          } else if (teamOf(seat) !== makerTeam) {
+            a.defHands += 1;
+            if (h.euchred) a.defEuchresLogged += 1;
+          }
+        }
+      }
     }
   }
 
   return Array.from(map.values()).map((a) => {
-    const { results, pointsFor, pointsAgainst, margins, ...rest } = a;
+    const {
+      results, pointsFor, pointsAgainst, margins,
+      handsIn, loggedCalls, callNet, r1Calls, defHands, defEuchresLogged,
+      ...rest
+    } = a;
     const g = a.games || 1;
     return {
       ...rest,
@@ -186,6 +246,11 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
       ppgAgainst: pointsAgainst / g,
       pointDiff: (pointsFor - pointsAgainst) / g,
       marginStd: stdev(margins),
+      bidPct: handsIn ? a.handsCalled / handsIn : 0,
+      orderPct: loggedCalls ? r1Calls / loggedCalls : null,
+      netPtsPerCall: loggedCalls ? callNet / loggedCalls : null,
+      defEuchreRate: defHands ? defEuchresLogged / defHands : null,
+      aloneMakePct: a.loneCalled ? a.loneWon / a.loneCalled : null,
       ...streaks(results),
     };
   });
@@ -417,6 +482,11 @@ export type SortKey = keyof Pick<
   | 'longestWinStreak'
   | 'longestLossStreak'
   | 'currentStreak'
+  | 'bidPct'
+  | 'orderPct'
+  | 'netPtsPerCall'
+  | 'defEuchreRate'
+  | 'aloneMakePct'
 >;
 
 // ── Filtering ────────────────────────────────────────────────────────────────
@@ -439,12 +509,15 @@ export function filterMatches(matches: MatchRecord[], f: MatchFilter): MatchReco
 
 export function sortPlayers(rows: PlayerRow[], key: SortKey, dir: 'asc' | 'desc'): PlayerRow[] {
   const mult = dir === 'asc' ? 1 : -1;
+  // Rows with no data for a metric (null) always sort to the bottom, either direction.
+  const numOf = (v: string | number | null): number =>
+    v == null ? (dir === 'asc' ? Infinity : -Infinity) : (v as number);
   return rows.slice().sort((x, y) => {
     const a = x[key];
     const b = y[key];
     if (typeof a === 'string' && typeof b === 'string') return a.localeCompare(b) * mult;
     // Numeric: primary by the chosen key, stable tiebreak by games then name.
-    const d = ((a as number) - (b as number)) * mult;
+    const d = (numOf(a) - numOf(b)) * mult;
     if (d !== 0) return d;
     if (y.games !== x.games) return y.games - x.games;
     return x.name.localeCompare(y.name);

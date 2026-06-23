@@ -13,6 +13,7 @@ export function playersToCSV(players: PlayerRow[], elo: Map<string, EloResult>):
     'Player', 'Elo', 'Games', 'Wins', 'Losses', 'Win%', 'PPG_For', 'PPG_Against', 'Point_Diff',
     'Tricks', 'Hands_Called', 'Calls_Won', 'Call%', 'Marches', 'Euchred', 'Loners_Called',
     'Loners_Won', 'Current_Streak', 'Longest_Win_Streak',
+    'Bid%', 'Order%', 'Net_Pts_Per_Call', 'Def_Euchre%', 'Alone_Make%',
   ];
   const rows = players
     .slice()
@@ -24,6 +25,11 @@ export function playersToCSV(players: PlayerRow[], elo: Map<string, EloResult>):
         p.ppgFor.toFixed(2), p.ppgAgainst.toFixed(2), p.pointDiff.toFixed(2), p.tricks,
         p.handsCalled, p.callsWon, (p.callPct * 100).toFixed(1), p.marches, p.euchres,
         p.loneCalled, p.loneWon, p.currentStreak, p.longestWinStreak,
+        (p.bidPct * 100).toFixed(1),
+        p.orderPct == null ? '' : (p.orderPct * 100).toFixed(1),
+        p.netPtsPerCall == null ? '' : p.netPtsPerCall.toFixed(2),
+        p.defEuchreRate == null ? '' : (p.defEuchreRate * 100).toFixed(1),
+        p.aloneMakePct == null ? '' : (p.aloneMakePct * 100).toFixed(1),
       ];
     });
   return [headers, ...rows].map((r) => r.map(cell).join(',')).join('\n');

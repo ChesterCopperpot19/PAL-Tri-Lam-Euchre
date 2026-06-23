@@ -99,6 +99,43 @@ const COLS: Col[] = [
   { key: 'handsCalled', label: 'Called', title: 'Hands called (became maker)', extra: true, render: (r) => r.handsCalled },
   { key: 'callsWon', label: 'Made', title: 'Calls won (not euchred)', extra: true, render: (r) => r.callsWon },
   { key: 'callPct', label: 'Call%', title: 'Win rate when calling trump', render: (r) => pct(r.callPct) },
+  { key: 'bidPct', label: 'Bid%', title: 'How often you call trump (calls ÷ hands dealt)', extra: true, render: (r) => pct(r.bidPct) },
+  {
+    key: 'orderPct',
+    label: 'Ord%',
+    title: 'Of your calls, % ordered up in round 1 (vs named in round 2). Needs hand-logged games.',
+    extra: true,
+    render: (r) => (r.orderPct == null ? <span className="text-white/30">—</span> : pct(r.orderPct)),
+  },
+  {
+    key: 'netPtsPerCall',
+    label: 'Net/Cl',
+    title: 'Net points your calls net the team, per call (points won − points conceded). Needs hand-logged games.',
+    extra: true,
+    render: (r) =>
+      r.netPtsPerCall == null ? (
+        <span className="text-white/30">—</span>
+      ) : (
+        <span className={r.netPtsPerCall >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+          {r.netPtsPerCall >= 0 ? '+' : ''}
+          {r.netPtsPerCall.toFixed(1)}
+        </span>
+      ),
+  },
+  {
+    key: 'aloneMakePct',
+    label: 'Aln%',
+    title: 'Loners made ÷ loners called',
+    extra: true,
+    render: (r) => (r.aloneMakePct == null ? <span className="text-white/30">—</span> : pct(r.aloneMakePct)),
+  },
+  {
+    key: 'defEuchreRate',
+    label: 'DfE%',
+    title: 'Euchres you inflict per hand played on defense. Needs hand-logged games.',
+    extra: true,
+    render: (r) => (r.defEuchreRate == null ? <span className="text-white/30">—</span> : pct(r.defEuchreRate)),
+  },
   { key: 'euchres', label: 'Set', title: 'Times euchred (set) while calling', extra: true, render: (r) => <span className="text-red-300/90">{r.euchres}</span> },
   { key: 'marches', label: '🌟', title: 'Marches (5-trick sweeps)', render: (r) => r.marches },
   { key: 'loneCalled', label: '🔥#', title: 'Loners called', extra: true, render: (r) => r.loneCalled },
