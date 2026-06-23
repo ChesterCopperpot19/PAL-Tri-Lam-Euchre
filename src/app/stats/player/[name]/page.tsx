@@ -148,9 +148,26 @@ export default function PlayerProfilePage() {
                   <dl className="text-sm space-y-1.5">
                     <Row k="Hands called" v={myRow.handsCalled} />
                     <Row k="Call success" v={`${myRow.callsWon}/${myRow.handsCalled} · ${pct(myRow.callPct)}`} />
+                    <Row k="Bid rate" v={pct(myRow.bidPct)} />
+                    <Row k="Order-up %" v={myRow.orderPct == null ? '—' : pct(myRow.orderPct)} />
+                    <Row
+                      k="Net pts / call"
+                      v={
+                        myRow.netPtsPerCall == null ? (
+                          '—'
+                        ) : (
+                          <span className={myRow.netPtsPerCall >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+                            {myRow.netPtsPerCall >= 0 ? '+' : ''}
+                            {myRow.netPtsPerCall.toFixed(1)}
+                          </span>
+                        )
+                      }
+                    />
                     <Row k="Marches" v={myRow.marches} />
                     <Row k="Euchred (set)" v={myRow.euchres} />
                     <Row k="Loners called / made" v={`${myRow.loneCalled} / ${myRow.loneWon}`} />
+                    <Row k="Alone make %" v={myRow.aloneMakePct == null ? '—' : pct(myRow.aloneMakePct)} />
+                    <Row k="Def. euchre rate" v={myRow.defEuchreRate == null ? '—' : pct(myRow.defEuchreRate)} />
                     <Row k="Total tricks" v={myRow.tricks} />
                   </dl>
                 ) : (
