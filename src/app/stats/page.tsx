@@ -294,6 +294,30 @@ export default function StatsPage() {
             )}
           </Section>
 
+          {/* Full hand-level data set — collapsed by default; the standard dashboard below is unchanged. */}
+          <Section
+            title="Full hand-level data"
+            note="Every hand from every game — dealer, trump, up-card, bidding, result, tricks"
+            right={
+              <button
+                onClick={() => setShowHands((v) => !v)}
+                aria-pressed={showHands}
+                className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
+              >
+                {showHands ? 'Collapse' : '🔍 Expand full data'}
+              </button>
+            }
+          >
+            {showHands ? (
+              <HandLevelData matches={matches} />
+            ) : (
+              <p className="text-white/45 text-sm">
+                Expand to explore the complete hand-by-hand data set — every hand’s bids, up-card,
+                trump, and tricks — plus a hand-level CSV download.
+              </p>
+            )}
+          </Section>
+
           {/* Superlatives */}
           <SuperlativeCards awards={superlatives} />
 
@@ -515,30 +539,6 @@ export default function StatsPage() {
                 );
               })}
             </div>
-          </Section>
-
-          {/* Full hand-level data set — collapsed by default; the standard dashboard is unchanged. */}
-          <Section
-            title="Full hand-level data"
-            note="Every hand from every game — dealer, trump, up-card, bidding, result, tricks"
-            right={
-              <button
-                onClick={() => setShowHands((v) => !v)}
-                aria-pressed={showHands}
-                className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
-              >
-                {showHands ? 'Collapse' : '🔍 Expand full data'}
-              </button>
-            }
-          >
-            {showHands ? (
-              <HandLevelData matches={matches} />
-            ) : (
-              <p className="text-white/45 text-sm">
-                The dashboard above is the standard view. Expand to explore the complete hand-by-hand
-                data set — bids, up-card, trump, every trick — and download the hand-level CSV.
-              </p>
-            )}
           </Section>
 
           <p className="text-[11px] text-white/40 leading-snug">
