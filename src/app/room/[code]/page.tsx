@@ -31,6 +31,8 @@ function eventText(ev: string, snap: RoomSnapshot | null): string | null {
       }${alone}`;
     case 'bid_call':
       return `${nameOf(parts[1])} called ${SUIT_NAMES[parts[2]] ?? parts[2]}${alone}`;
+    case 'farmers_swap':
+      return `${nameOf(parts[1])} swapped a farmer's hand`;
     case 'bid_round1_all_passed':
       return 'Everyone passed — round two: call any other suit';
     case 'rematch':
@@ -59,8 +61,9 @@ export default function RoomPage() {
   const snapshotRef = useRef<RoomSnapshot | null>(null);
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
   const toastIdRef = useRef(0);
-  // The "going alone" gag: a full-screen photo for 5s whenever a loner is called.
+  // The "going alone" gag: a full-screen photo for 7s whenever a loner is called.
   const [lonerFx, setLonerFx] = useState(false);
+  const [lonerCaller, setLonerCaller] = useState<string | null>(null);
   const lonerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -76,14 +79,16 @@ export default function RoomPage() {
     }
 
     function onEvent(ev: string) {
-      // A loner call (order-up or suit-call, going alone) fires the 5-second
+      // A loner call (order-up or suit-call, going alone) fires the 7-second
       // full-screen "going alone" photo for everyone in the room — bots
       // included, since every bid flows through this same room:event.
       const p = ev.split(':');
       if ((p[0] === 'bid_order' || p[0] === 'bid_call') && p[3] === 'alone') {
+        const caller = snapshotRef.current?.members.find((m) => m.seat === Number(p[1]))?.name ?? null;
+        setLonerCaller(caller);
         setLonerFx(true);
         if (lonerTimerRef.current) clearTimeout(lonerTimerRef.current);
-        lonerTimerRef.current = setTimeout(() => setLonerFx(false), 5000);
+        lonerTimerRef.current = setTimeout(() => setLonerFx(false), 7000);
       }
 
       const text = eventText(ev, snapshotRef.current);
@@ -196,6 +201,7 @@ export default function RoomPage() {
     onPass: () => socket.emit('bid:pass'),
     onCall: (suit: Suit, alone: boolean) => socket.emit('bid:call', { suit, alone }),
     onDiscard: (cardId: string) => socket.emit('discard:card', { cardId }),
+    onFarmersSwap: (cardIds: string[]) => socket.emit('farmers:swap', { cardIds }),
     onPlay: (cardId: string) => socket.emit('play:card', { cardId }),
     onChat: (text: string) => socket.emit('chat:send', { text }),
     onNextHand: () => socket.emit('room:nextHand'),
@@ -212,7 +218,7 @@ export default function RoomPage() {
 
   return (
     <>
-      {/* "Going alone" gag — full-screen photo for 5 seconds on any loner call. */}
+      {/* "Going alone" gag — full-screen photo for 7 seconds on any loner call. */}
       {lonerFx && (
         <div
           className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/90 px-3 fade-in"
@@ -224,8 +230,8 @@ export default function RoomPage() {
             alt=""
             className="max-h-[82vh] max-w-[94vw] rounded-xl border-2 border-gold object-contain shadow-2xl"
           />
-          <div className="mt-4 font-display text-3xl sm:text-4xl uppercase tracking-[0.2em] text-gold drop-shadow">
-            Going Alone
+          <div className="mt-4 font-display text-3xl sm:text-4xl uppercase tracking-[0.15em] text-gold drop-shadow text-center">
+            {lonerCaller ? `${lonerCaller} is going alone!` : 'Going Alone'}
           </div>
         </div>
       )}

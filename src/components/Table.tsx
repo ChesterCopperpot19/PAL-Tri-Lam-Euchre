@@ -10,6 +10,8 @@ import TrumpBadge from './TrumpBadge';
 import ScoreBoard from './ScoreBoard';
 import BiddingPanel from './BiddingPanel';
 import DiscardPanel from './DiscardPanel';
+import FarmerPanel from './FarmerPanel';
+import RulesModal from './RulesModal';
 import HandSummary from './HandSummary';
 import GameOver from './GameOver';
 import type { RoomSnapshot, ChatMessage } from '@/lib/shared-types';
@@ -24,6 +26,7 @@ type Handlers = {
   onPass: () => void;
   onCall: (suit: Suit, alone: boolean) => void;
   onDiscard: (cardId: string) => void;
+  onFarmersSwap: (cardIds: string[]) => void;
   onPlay: (cardId: string) => void;
   onChat: (text: string) => void;
   onNextHand: () => void;
@@ -114,6 +117,7 @@ export default function Table({
   // (went alone and was not euchred).
   const [lonerWonFx, setLonerWonFx] = useState(false);
   const lonerWonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showRules, setShowRules] = useState(false);
   useEffect(() => {
     const ct = state.completedTricks;
     const len = ct.length;
@@ -160,15 +164,15 @@ export default function Table({
     }
   }, [state.completedTricks.length]);
 
-  // When a hand ends on a *made* loner (went alone and not euchred), flash the
-  // celebration photo for 5 seconds. lastHand is set in the same state update
-  // that completes the 5th trick, so completedTricks.length === 5 is the cue.
+  // When a hand ends on a *swept* loner (went alone AND took all 5 tricks — a
+  // lone march), flash the celebration photo for 7 seconds. lastHand is set in
+  // the same state update that completes the 5th trick, so length === 5 is the cue.
   useEffect(() => {
     const last = state.lastHand;
-    if (state.completedTricks.length === 5 && last && last.alone && !last.euchred) {
+    if (state.completedTricks.length === 5 && last && last.alone && last.march) {
       setLonerWonFx(true);
       if (lonerWonTimerRef.current) clearTimeout(lonerWonTimerRef.current);
-      lonerWonTimerRef.current = setTimeout(() => setLonerWonFx(false), 5000);
+      lonerWonTimerRef.current = setTimeout(() => setLonerWonFx(false), 7000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.completedTricks.length]);
@@ -223,7 +227,7 @@ export default function Table({
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-[100dvh] flex flex-col">
       {/* Top bar */}
       <header className="flex items-center justify-between px-3 sm:px-5 py-3 bg-black/40 border-b border-white/10">
         <div className="flex items-center gap-3">
@@ -252,6 +256,13 @@ export default function Table({
             title={soundOn ? 'Turn sound on — tap to mute' : 'Turn sound off — tap to unmute'}
           >
             {soundOn ? '🔔' : '🔕'}
+          </button>
+          <button
+            onClick={() => setShowRules(true)}
+            className="text-xs text-white/60 hover:text-white"
+            title="Show the house rules"
+          >
+            📖 Rules
           </button>
           <button
             onClick={handlers.onLeave}
@@ -309,7 +320,7 @@ export default function Table({
       {/* Main grid: table + chat */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3 p-2 sm:p-4">
         {/* Table area */}
-        <div className="relative flex flex-col items-center justify-between min-h-[70vh]">
+        <div className="relative flex flex-col items-center justify-between min-h-0">
           {/* Large always-on trump indicator (top-left of the table). */}
           {state.trump && (
             <div className="absolute top-1 left-1 z-10">
@@ -389,6 +400,15 @@ export default function Table({
                 onCall={handlers.onCall}
               />
             )}
+            {!isSpectator &&
+              state.phase === 'BIDDING_1' &&
+              myTurn &&
+              viewerSeat !== null &&
+              !(state.farmersSwapped ?? []).includes(viewerSeat) &&
+              myHand.length === 5 &&
+              myHand.every((c) => c.rank === '9' || c.rank === '10') && (
+                <FarmerPanel hand={myHand} onSwap={handlers.onFarmersSwap} />
+              )}
             {!isSpectator && state.phase === 'DEALER_DISCARD' && meIsDealer && (
               <DiscardPanel
                 hand={myHand}
@@ -498,7 +518,7 @@ export default function Table({
         />
       )}
 
-      {/* "Loner made" gag — full-screen photo for 5 seconds when someone wins a loner. */}
+      {/* "Loner swept" gag — full-screen photo for 7 seconds when someone takes all 5 alone. */}
       {lonerWonFx && (
         <div
           className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 px-3 fade-in"
@@ -511,10 +531,12 @@ export default function Table({
             className="max-h-[80vh] max-w-[94vw] rounded-xl border-2 border-gold object-contain shadow-2xl"
           />
           <div className="mt-4 font-display text-3xl sm:text-4xl uppercase tracking-[0.2em] text-gold drop-shadow text-center">
-            {state.lastHand ? `${memberAt(state.lastHand.maker)?.name ?? 'Someone'} made a loner!` : 'Loner made!'}
+            {state.lastHand ? `${memberAt(state.lastHand.maker)?.name ?? 'Someone'} swept the loner!` : 'Loner swept!'}
           </div>
         </div>
       )}
+
+      {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </div>
   );
 }

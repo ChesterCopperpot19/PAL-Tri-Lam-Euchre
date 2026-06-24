@@ -45,14 +45,20 @@ body {
   box-shadow: inset 0 0 0 2px #141B4D;
 }
 .card-base {
-  width: 70px;
-  height: 100px;
   user-select: none;
   position: relative;
 }
-@media (max-width: 640px) {
-  .card-base { width: 56px; height: 80px; }
+/* Fluid default size (md): the whole table fits any monitor without scrolling.
+   Scales by whichever is tighter — viewport height (laptops/short screens) or
+   width (phones) — capping at the original 70×100 on large displays. The card's
+   font-size drives the in-card rank/suit (sized in em), so text scales too. */
+.card-sz-md {
+  width: clamp(42px, min(7.7vh, 12.6vw), 70px);
+  height: clamp(60px, min(11vh, 18vw), 100px);
+  font-size: clamp(8px, min(1.55vh, 2.5vw), 16px);
 }
+.card-sz-sm { width: 48px; height: 68px; font-size: 13px; }
+.card-sz-lg { width: 84px; height: 120px; font-size: 18px; }
 
 .legal-glow {
   box-shadow: 0 0 0 3px #FFB81C, 0 6px 18px rgba(255,184,28,0.4);
@@ -60,7 +66,8 @@ body {
 }
 .illegal-dim { opacity: 0.55; filter: grayscale(0.4); }
 
-.turn-ring { box-shadow: 0 0 0 3px #FFB81C; }
+/* Whose turn it is — red outline so it's unmistakable (was gold). */
+.turn-ring { box-shadow: 0 0 0 3px #ef4444, 0 0 14px rgba(239, 68, 68, 0.55); }
 
 /* All non-essential motion is gated on prefers-reduced-motion: no-preference.
  * For users who request reduced motion (WCAG 2.3.3), we fall back to a

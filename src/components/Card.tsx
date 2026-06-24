@@ -31,6 +31,11 @@ export function cardLabel(card: CardT): string {
   return `${RANK_NAME[card.rank]} of ${SUIT_NAME[card.suit]}`;
 }
 
+/** Size classes live in globals.css; "md" is fluid (scales with the viewport),
+ *  sm/lg are fixed. font-size on the card drives the em-based rank/suit. */
+const sizeClass = (size: 'sm' | 'md' | 'lg') =>
+  size === 'sm' ? 'card-sz-sm' : size === 'lg' ? 'card-sz-lg' : 'card-sz-md';
+
 export function CardFace({
   card,
   highlight = false,
@@ -46,42 +51,23 @@ export function CardFace({
 }) {
   const color = SUIT_COLOR[card.suit];
   const glyph = SUIT_GLYPH[card.suit];
-  const sz =
-    size === 'sm'
-      ? { w: 48, h: 68, font: 14, big: 22 }
-      : size === 'lg'
-        ? { w: 84, h: 120, font: 18, big: 36 }
-        : { w: 70, h: 100, font: 16, big: 30 };
 
-  // The pips/rank text is purely visual — screen readers get cardLabel().
+  // Rank in the corners; a large suit symbol fills the center so the suit is
+  // unmistakable at a glance (face cards no longer show a big letter). Inner
+  // sizes are in em, so they scale with the card's (fluid) font-size.
+  const corner = (
+    <span className="leading-none flex flex-col items-center font-bold" style={{ fontSize: '1em' }}>
+      <span>{card.rank}</span>
+      <span className="leading-none">{glyph}</span>
+    </span>
+  );
   const inner = (
-    <div aria-hidden="true">
-      <div
-        className="absolute top-1 left-1.5 leading-none flex flex-col items-center"
-        style={{ fontSize: sz.font, fontWeight: 700 }}
-      >
-        <span>{card.rank}</span>
-        <span style={{ fontSize: sz.font + 1, lineHeight: 1 }}>{glyph}</span>
+    <div aria-hidden="true" className="absolute inset-0">
+      <div className="absolute top-[5%] left-[8%]">{corner}</div>
+      <div className="absolute inset-0 flex items-center justify-center" style={{ fontSize: '3.1em' }}>
+        <span>{glyph}</span>
       </div>
-      <div
-        className="absolute inset-0 flex items-center justify-center"
-        style={{ fontSize: sz.big }}
-      >
-        {(card.rank === 'J' || card.rank === 'Q' || card.rank === 'K') ? (
-          <span className="font-display" style={{ fontSize: sz.big + 6 }}>
-            {card.rank}
-          </span>
-        ) : (
-          <span>{glyph}</span>
-        )}
-      </div>
-      <div
-        className="absolute bottom-1 right-1.5 leading-none flex flex-col items-center rotate-180"
-        style={{ fontSize: sz.font, fontWeight: 700 }}
-      >
-        <span>{card.rank}</span>
-        <span style={{ fontSize: sz.font + 1, lineHeight: 1 }}>{glyph}</span>
-      </div>
+      <div className="absolute bottom-[5%] right-[8%] rotate-180">{corner}</div>
     </div>
   );
 
@@ -92,8 +78,8 @@ export function CardFace({
       <div
         role="img"
         aria-label={cardLabel(card)}
-        className={`card-face card-base relative ${dim ? 'illegal-dim' : ''}`}
-        style={{ width: sz.w, height: sz.h, color }}
+        className={`card-face card-base ${sizeClass(size)} relative ${dim ? 'illegal-dim' : ''}`}
+        style={{ color }}
       >
         {inner}
       </div>
@@ -104,10 +90,10 @@ export function CardFace({
     <button
       onClick={onClick}
       aria-label={cardLabel(card)}
-      className={`card-face card-base relative transition-transform duration-150 cursor-pointer ${
+      className={`card-face card-base ${sizeClass(size)} relative transition-transform duration-150 cursor-pointer ${
         highlight ? 'legal-glow' : ''
       } ${dim ? 'illegal-dim' : ''} hover:-translate-y-1`}
-      style={{ width: sz.w, height: sz.h, color }}
+      style={{ color }}
     >
       {inner}
     </button>
@@ -121,13 +107,6 @@ export function CardBack({
   size?: 'sm' | 'md' | 'lg';
   count?: number;
 }) {
-  const sz =
-    size === 'sm'
-      ? { w: 48, h: 68 }
-      : size === 'lg'
-        ? { w: 84, h: 120 }
-        : { w: 70, h: 100 };
-
   // Pick a stable random photo per-mount. Stable means no flicker on re-renders;
   // tied to component instance (slot), not to a specific card, so it leaks no info.
   const [photoIdx] = useState(() => Math.floor(Math.random() * NUM_BACKS) + 1);
@@ -139,10 +118,8 @@ export function CardBack({
       aria-label={count > 1 ? `${count} face-down cards` : 'Face-down card'}
     >
       <div
-        className="card-back card-base"
+        className={`card-back card-base ${sizeClass(size)}`}
         style={{
-          width: sz.w,
-          height: sz.h,
           backgroundImage: `url(/card-backs/${photoIdx}.jpg)`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',

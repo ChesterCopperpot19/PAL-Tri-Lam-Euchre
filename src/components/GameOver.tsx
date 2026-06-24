@@ -1,8 +1,10 @@
 'use client';
+import { useState } from 'react';
 import type { RedactedState } from '@/server/engine/redact';
 import type { RoomMember } from '@/lib/shared-types';
 import { teamName } from '@/lib/format';
 import StatsTable from './StatsTable';
+import Scorecard from './Scorecard';
 
 export default function GameOver({
   state,
@@ -21,6 +23,7 @@ export default function GameOver({
   const ns = teamName(members, 'NS');
   const ew = teamName(members, 'EW');
   const winner = state.scores.NS > state.scores.EW ? ns : ew;
+  const [showCard, setShowCard] = useState(true);
   return (
     <div
       role="dialog"
@@ -49,6 +52,25 @@ export default function GameOver({
 
         <div className="mt-5">
           <StatsTable history={state.history} members={members} />
+        </div>
+
+        <div className="mt-5">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm uppercase tracking-wider text-gold font-semibold">
+              📋 Round scorecard — every trick
+            </h3>
+            <button
+              onClick={() => setShowCard((v) => !v)}
+              className="text-xs bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-2.5 py-1"
+            >
+              {showCard ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {showCard && (
+            <div className="max-h-[48vh] overflow-y-auto pr-1">
+              <Scorecard state={state} members={members} />
+            </div>
+          )}
         </div>
 
         <div className="text-center mt-5 flex items-center justify-center gap-3">

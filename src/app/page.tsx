@@ -146,7 +146,7 @@ export default function LandingPage() {
 
         <Link
           href="/stats"
-          className="mt-4 block text-center text-sm bg-white/5 hover:bg-white/10 border border-white/15 rounded-lg py-2.5 font-medium text-gold"
+          className="mt-4 block text-center text-lg sm:text-xl bg-gold/10 hover:bg-gold/20 border border-gold/40 rounded-lg py-3 font-semibold text-gold tracking-wide"
         >
           📊 All-time stats
         </Link>

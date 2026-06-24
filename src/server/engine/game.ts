@@ -40,6 +40,7 @@ export function createGame(): GameState {
     lastHand: null,
     history: [],
     bidLog: [],
+    farmersSwapped: [],
     seed: Math.floor(Math.random() * 0xffffffff),
   };
 }
@@ -87,6 +88,7 @@ export function dealHand(state: GameState): GameState {
     trickCounts: { NS: 0, EW: 0 },
     lastHand: null,
     bidLog: [],
+    farmersSwapped: [],
     turn: next(dealer),
     seed: (Math.imul(state.seed, 1664525) + 1013904223) >>> 0, // re-seed for next deal
   };
@@ -153,6 +155,11 @@ function scoreHand(state: GameState): GameState {
 }
 
 /** Begin the next hand: rotate dealer, deal new cards. */
+/** A "farmer's hand": all five cards are 9s or 10s (no card higher than a 10). */
+export function isFarmersHand(hand: Card[]): boolean {
+  return hand.length === 5 && hand.every((c) => c.rank === '9' || c.rank === '10');
+}
+
 export function startNextHand(state: GameState): GameState {
   if (state.phase === 'GAME_OVER') return state;
   const newDealer = next(state.dealer);
@@ -251,6 +258,30 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
       // If alone-maker's partner would lead, skip.
       if (s.sittingOut.includes(s.turn)) s = { ...s, turn: advanceTurn(s, s.turn) };
       events.push(`bid_call:${action.seat}:${action.suit}${action.alone ? ':alone' : ''}`);
+      return { state: s, events };
+    }
+
+    case 'FARMERS_SWAP': {
+      if (state.phase !== 'BIDDING_1') throw new Error('farmer swap only in round 1');
+      if (action.seat !== state.turn) throw new Error('not your turn');
+      if (state.farmersSwapped.includes(action.seat)) throw new Error('already swapped this hand');
+      const hand = state.hands[action.seat];
+      if (!isFarmersHand(hand)) throw new Error("not a farmer's hand");
+      const give = new Set(action.cardIds);
+      if (give.size !== 3) throw new Error('must swap exactly 3 cards');
+      if ([...give].some((id) => !hand.find((c) => c.id === id))) throw new Error('card not in hand');
+      // Buried kitty = the 3 cards under the up-card (kitty[0]); the up-card stays.
+      const buried = state.kitty.slice(1);
+      const keep = hand.filter((c) => !give.has(c.id));
+      const given = hand.filter((c) => give.has(c.id));
+      const s: GameState = {
+        ...state,
+        hands: { ...state.hands, [action.seat]: [...keep, ...buried] },
+        kitty: [state.kitty[0], ...given],
+        farmersSwapped: [...state.farmersSwapped, action.seat],
+        // Turn unchanged — the player still bids this turn with their new hand.
+      };
+      events.push(`farmers_swap:${action.seat}`);
       return { state: s, events };
     }
 

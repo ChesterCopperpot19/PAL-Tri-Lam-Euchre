@@ -713,6 +713,20 @@ export function attachHandlers(io: IO) {
       }
     });
 
+    socket.on('farmers:swap', ({ cardIds }) => {
+      const ctx = getSeatedSession(socket);
+      if (!ctx) return err(socket, 'spectators cannot play');
+      const { room, seat } = ctx;
+      try {
+        const { state, events } = applyAction(room.state, { type: 'FARMERS_SWAP', seat, cardIds });
+        room.state = state;
+        events.forEach((e) => io.to(room.code).emit('room:event', e));
+        broadcast(io, room);
+      } catch (e) {
+        err(socket, (e as Error).message);
+      }
+    });
+
     socket.on('discard:card', ({ cardId }) => {
       const ctx = getSeatedSession(socket);
       if (!ctx) return err(socket, 'spectators cannot play');

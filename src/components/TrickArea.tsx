@@ -54,7 +54,7 @@ export default function TrickArea({
     (phase === 'BIDDING_1' || phase === 'BIDDING_2');
 
   return (
-    <div className="relative w-64 h-64 sm:w-80 sm:h-80 flex items-center justify-center">
+    <div className="relative w-[min(20rem,36vh,60vw)] h-[min(20rem,36vh,60vw)] flex items-center justify-center">
       {/* Bidding deck: shows the kitty with the upcard face-up in round 1, or
           face-down in round 2 (the upcard has been "turned down" per Euchre rules). */}
       {showDeck && (

@@ -56,9 +56,10 @@ export function redactState(state: GameState, viewerSeat: SeatIndex | null): Red
   const { hands: _hands, kitty: _kitty, seed: _seed, bidLog: _bidLog, ...rest } = state;
   return {
     ...rest,
-    // Drop the heavy hand-level capture (bids, per-trick cards) from the client
-    // payload — it's only needed server-side for stored match records.
-    history: rest.history.map(slimHand),
+    // Drop the heavy hand-level capture (bids, per-trick cards) from in-play
+    // snapshots to keep them small; send the FULL log at game over so the
+    // end-of-game scorecard can show every trick.
+    history: state.phase === 'GAME_OVER' ? rest.history : rest.history.map(slimHand),
     lastHand: rest.lastHand ? slimHand(rest.lastHand) : null,
     seats,
     legalPlayIds: viewerSeat === null ? [] : legalPlayIds(state, viewerSeat),
