@@ -26,7 +26,7 @@ type Handlers = {
   onPass: () => void;
   onCall: (suit: Suit, alone: boolean) => void;
   onDiscard: (cardId: string) => void;
-  onFarmersSwap: (cardIds: string[]) => void;
+  onFarmersRedeal: () => void;
   onPlay: (cardId: string) => void;
   onChat: (text: string) => void;
   onNextHand: () => void;
@@ -401,13 +401,11 @@ export default function Table({
               />
             )}
             {!isSpectator &&
-              state.phase === 'BIDDING_1' &&
-              myTurn &&
+              (state.phase === 'BIDDING_1' || state.phase === 'BIDDING_2') &&
               viewerSeat !== null &&
-              !(state.farmersSwapped ?? []).includes(viewerSeat) &&
               myHand.length === 5 &&
               myHand.every((c) => c.rank === '9' || c.rank === '10') && (
-                <FarmerPanel hand={myHand} onSwap={handlers.onFarmersSwap} />
+                <FarmerPanel onRedeal={handlers.onFarmersRedeal} />
               )}
             {!isSpectator && state.phase === 'DEALER_DISCARD' && meIsDealer && (
               <DiscardPanel

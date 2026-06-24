@@ -713,12 +713,12 @@ export function attachHandlers(io: IO) {
       }
     });
 
-    socket.on('farmers:swap', ({ cardIds }) => {
+    socket.on('farmers:redeal', () => {
       const ctx = getSeatedSession(socket);
       if (!ctx) return err(socket, 'spectators cannot play');
       const { room, seat } = ctx;
       try {
-        const { state, events } = applyAction(room.state, { type: 'FARMERS_SWAP', seat, cardIds });
+        const { state, events } = applyAction(room.state, { type: 'FARMERS_REDEAL', seat });
         room.state = state;
         events.forEach((e) => io.to(room.code).emit('room:event', e));
         broadcast(io, room);

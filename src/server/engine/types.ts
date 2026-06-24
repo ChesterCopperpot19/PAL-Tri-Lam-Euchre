@@ -112,8 +112,6 @@ export type GameState = {
   history: HandSummary[];
   /** Bidding actions for the CURRENT hand (reset each deal; for hand-level stats). */
   bidLog: BidEntry[];
-  /** Seats that have used their farmer's-hand swap this hand. */
-  farmersSwapped: SeatIndex[];
   /** Random seed used for shuffling — kept for tests/replay. */
   seed: number;
 };
@@ -123,7 +121,7 @@ export type Action =
   | { type: 'BID_ORDER'; seat: SeatIndex; alone: boolean }
   | { type: 'BID_PASS'; seat: SeatIndex }
   | { type: 'BID_CALL'; seat: SeatIndex; suit: Suit; alone: boolean }
-  | { type: 'FARMERS_SWAP'; seat: SeatIndex; cardIds: string[] }
+  | { type: 'FARMERS_REDEAL'; seat: SeatIndex }
   | { type: 'DEALER_DISCARD'; seat: SeatIndex; cardId: string }
   | { type: 'PLAY_CARD'; seat: SeatIndex; cardId: string };
 

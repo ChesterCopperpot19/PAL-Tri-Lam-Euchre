@@ -31,8 +31,8 @@ function eventText(ev: string, snap: RoomSnapshot | null): string | null {
       }${alone}`;
     case 'bid_call':
       return `${nameOf(parts[1])} called ${SUIT_NAMES[parts[2]] ?? parts[2]}${alone}`;
-    case 'farmers_swap':
-      return `${nameOf(parts[1])} swapped a farmer's hand`;
+    case 'farmers_redeal':
+      return `${nameOf(parts[1])} threw in a farmer's hand — re-dealing`;
     case 'bid_round1_all_passed':
       return 'Everyone passed — round two: call any other suit';
     case 'rematch':
@@ -201,7 +201,7 @@ export default function RoomPage() {
     onPass: () => socket.emit('bid:pass'),
     onCall: (suit: Suit, alone: boolean) => socket.emit('bid:call', { suit, alone }),
     onDiscard: (cardId: string) => socket.emit('discard:card', { cardId }),
-    onFarmersSwap: (cardIds: string[]) => socket.emit('farmers:swap', { cardIds }),
+    onFarmersRedeal: () => socket.emit('farmers:redeal'),
     onPlay: (cardId: string) => socket.emit('play:card', { cardId }),
     onChat: (text: string) => socket.emit('chat:send', { text }),
     onNextHand: () => socket.emit('room:nextHand'),

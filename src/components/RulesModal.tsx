@@ -71,8 +71,8 @@ export default function RulesModal({ onClose }: { onClose: () => void }) {
             alone) = <b>4</b>. If the maker fails to take 3 (euchred), the defenders score <b>2</b>.
           </Rule>
           <Rule t="Farmer&rsquo;s hand">
-            A player dealt a farmer&rsquo;s hand — <b>all 9s and 10s</b> (no card higher than a 10) — may, before
-            bidding, <b>swap three of their cards</b> for the three buried kitty cards.
+            A player dealt a farmer&rsquo;s hand — <b>all 9s and 10s</b> (no card higher than a 10) — may throw it
+            in during bidding for a <b>full re-deal</b> (the same dealer deals a fresh hand).
           </Rule>
         </div>
       </div>

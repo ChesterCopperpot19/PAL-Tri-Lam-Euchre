@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-// Unit test for the farmer's-hand rule (engine).
+// Unit test for the farmer's-hand rule (full re-deal variant).
 //   npx tsx scripts/farmers-hand-check.ts
 
 import assert from 'node:assert/strict';
@@ -9,8 +9,6 @@ import type { Card, GameState, Rank, Suit } from '../src/server/engine/types';
 const card = (rank: Rank, suit: Suit): Card => ({ rank, suit, id: `${rank}${suit}` });
 const farmer: Card[] = [card('9', 'H'), card('10', 'H'), card('9', 'D'), card('10', 'D'), card('9', 'C')];
 const other: Card[] = [card('A', 'H'), card('K', 'H'), card('Q', 'H'), card('J', 'H'), card('9', 'S')];
-const buried: Card[] = [card('J', 'S'), card('Q', 'S'), card('K', 'S')];
-const upcard = card('A', 'S');
 
 let passed = 0;
 const check = (l: string, fn: () => void) => { fn(); passed++; console.log('  ✓', l); };
@@ -27,32 +25,27 @@ const base: GameState = {
   dealer: 0,
   turn: 1,
   hands: { 0: other, 1: farmer, 2: other, 3: other },
-  kitty: [upcard, ...buried],
-  upcard,
-  farmersSwapped: [],
+  kitty: [card('A', 'S'), card('J', 'S'), card('Q', 'S'), card('K', 'S')],
+  upcard: card('A', 'S'),
 };
 
-const { state: after } = applyAction(base, { type: 'FARMERS_SWAP', seat: 1, cardIds: ['9H', '10H', '9D'] });
-check('swap replaces the 3 chosen cards with the 3 buried kitty cards', () => {
-  assert.deepEqual(after.hands[1].map((c) => c.id).sort(), ['10D', '9C', 'JS', 'KS', 'QS'].sort());
-});
-check('up-card stays on top; the given cards move under it in the kitty', () => {
-  assert.equal(after.kitty[0].id, 'AS');
-  assert.deepEqual(after.kitty.slice(1).map((c) => c.id).sort(), ['9D', '9H', '10H'].sort());
-});
-check('turn & phase unchanged; seat marked as swapped', () => {
-  assert.equal(after.turn, 1);
+const { state: after } = applyAction(base, { type: 'FARMERS_REDEAL', seat: 1 });
+check('re-deal gives a fresh round-1 hand with the SAME dealer', () => {
   assert.equal(after.phase, 'BIDDING_1');
-  assert.deepEqual(after.farmersSwapped, [1]);
+  assert.equal(after.dealer, 0); // dealer unchanged
+  assert.equal(after.turn, 1); // next(dealer)
+  for (const s of [0, 1, 2, 3] as const) assert.equal(after.hands[s].length, 5);
+  assert.equal(after.kitty.length, 4);
+  assert.ok(after.upcard);
 });
-check("the new hand is no longer a farmer's hand", () => {
-  assert.equal(isFarmersHand(after.hands[1]), false);
+check('the deal actually changes (fresh shuffle of the full deck)', () => {
+  assert.notDeepEqual(after.hands[1].map((c) => c.id), farmer.map((c) => c.id));
+  const all = [0, 1, 2, 3].flatMap((s) => after.hands[s as 0 | 1 | 2 | 3]).concat(after.kitty);
+  assert.equal(new Set(all.map((c) => c.id)).size, 24); // every card distinct, full deck
 });
-check('rejects: second swap, wrong count, wrong turn, non-farmer hand', () => {
-  assert.throws(() => applyAction(after, { type: 'FARMERS_SWAP', seat: 1, cardIds: after.hands[1].slice(0, 3).map((c) => c.id) }), /already swapped/);
-  assert.throws(() => applyAction(base, { type: 'FARMERS_SWAP', seat: 1, cardIds: ['9H', '10H'] }), /exactly 3/);
-  assert.throws(() => applyAction(base, { type: 'FARMERS_SWAP', seat: 0, cardIds: ['AH', 'KH', 'QH'] }), /not your turn/);
-  assert.throws(() => applyAction({ ...base, hands: { ...base.hands, 1: other } }, { type: 'FARMERS_SWAP', seat: 1, cardIds: ['AH', 'KH', 'QH'] }), /not a farmer/);
+check('rejects re-deal when not a farmer hand, or not during bidding', () => {
+  assert.throws(() => applyAction({ ...base, hands: { ...base.hands, 1: other } }, { type: 'FARMERS_REDEAL', seat: 1 }), /not a farmer/);
+  assert.throws(() => applyAction({ ...base, phase: 'PLAYING' }, { type: 'FARMERS_REDEAL', seat: 1 }), /only during bidding/);
 });
 
-console.log(`\nAll ${passed} farmer's-hand checks passed ✅`);
+console.log(`\nAll ${passed} farmer's-hand (re-deal) checks passed ✅`);

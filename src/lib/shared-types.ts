@@ -169,7 +169,7 @@ export type ClientToServerEvents = {
   'bid:call': (payload: { suit: 'H' | 'D' | 'C' | 'S'; alone: boolean }) => void;
   'discard:card': (payload: { cardId: string }) => void;
   'play:card': (payload: { cardId: string }) => void;
-  'farmers:swap': (payload: { cardIds: string[] }) => void;
+  'farmers:redeal': () => void;
   'chat:send': (payload: { text: string }) => void;
 };
 

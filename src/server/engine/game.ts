@@ -40,7 +40,6 @@ export function createGame(): GameState {
     lastHand: null,
     history: [],
     bidLog: [],
-    farmersSwapped: [],
     seed: Math.floor(Math.random() * 0xffffffff),
   };
 }
@@ -88,7 +87,6 @@ export function dealHand(state: GameState): GameState {
     trickCounts: { NS: 0, EW: 0 },
     lastHand: null,
     bidLog: [],
-    farmersSwapped: [],
     turn: next(dealer),
     seed: (Math.imul(state.seed, 1664525) + 1013904223) >>> 0, // re-seed for next deal
   };
@@ -261,28 +259,14 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
       return { state: s, events };
     }
 
-    case 'FARMERS_SWAP': {
-      if (state.phase !== 'BIDDING_1') throw new Error('farmer swap only in round 1');
-      if (action.seat !== state.turn) throw new Error('not your turn');
-      if (state.farmersSwapped.includes(action.seat)) throw new Error('already swapped this hand');
-      const hand = state.hands[action.seat];
-      if (!isFarmersHand(hand)) throw new Error("not a farmer's hand");
-      const give = new Set(action.cardIds);
-      if (give.size !== 3) throw new Error('must swap exactly 3 cards');
-      if ([...give].some((id) => !hand.find((c) => c.id === id))) throw new Error('card not in hand');
-      // Buried kitty = the 3 cards under the up-card (kitty[0]); the up-card stays.
-      const buried = state.kitty.slice(1);
-      const keep = hand.filter((c) => !give.has(c.id));
-      const given = hand.filter((c) => give.has(c.id));
-      const s: GameState = {
-        ...state,
-        hands: { ...state.hands, [action.seat]: [...keep, ...buried] },
-        kitty: [state.kitty[0], ...given],
-        farmersSwapped: [...state.farmersSwapped, action.seat],
-        // Turn unchanged — the player still bids this turn with their new hand.
-      };
-      events.push(`farmers_swap:${action.seat}`);
-      return { state: s, events };
+    case 'FARMERS_REDEAL': {
+      if (state.phase !== 'BIDDING_1' && state.phase !== 'BIDDING_2')
+        throw new Error('redeal only during bidding');
+      if (!isFarmersHand(state.hands[action.seat])) throw new Error("not a farmer's hand");
+      // Throw the whole hand in and deal a fresh one with the same dealer.
+      const dealt = dealHand(state);
+      events.push(`farmers_redeal:${action.seat}`);
+      return { state: dealt, events };
     }
 
     case 'DEALER_DISCARD': {
