@@ -38,7 +38,7 @@ export default function CallsByRank({ matches }: { matches: MatchRecord[] }) {
     datasets: [
       {
         label: 'Calls',
-        data: CALL_RANKS.map((c) => byRank[c]),
+        data: CALL_RANKS.map((c) => (total ? Math.round((byRank[c] / total) * 100) : 0)),
         backgroundColor: GOLD,
         borderRadius: 4,
         maxBarThickness: 52,
@@ -53,15 +53,15 @@ export default function CallsByRank({ matches }: { matches: MatchRecord[] }) {
       tooltip: {
         callbacks: {
           label: (ctx: TooltipItem<'bar'>) => {
-            const n = ctx.parsed.y as number;
-            return ` ${n} calls · ${total ? Math.round((n / total) * 100) : 0}%`;
+            const cat = CALL_RANKS[ctx.dataIndex];
+            return ` ${ctx.parsed.y}% · ${byRank[cat]} calls`;
           },
         },
       },
     },
     scales: {
       x: { ticks: { color: TICK }, grid: { display: false } },
-      y: { beginAtZero: true, ticks: { color: TICK, precision: 0 }, grid: { color: GRID } },
+      y: { beginAtZero: true, ticks: { color: TICK, callback: (v) => `${v}%` }, grid: { color: GRID } },
     },
   };
 
@@ -72,7 +72,7 @@ export default function CallsByRank({ matches }: { matches: MatchRecord[] }) {
     <div className="space-y-4">
       <div>
         <div className="text-[11px] text-white/45 mb-1">
-          Across all players · up-card rank ordered up (round 1), or “R2” for a round-2 named call
+          % of all calls · up-card rank ordered up (round 1), or “R2” for a round-2 named call
         </div>
         <div style={{ height: 220 }}>
           <Bar data={barData} options={barOpts} />
