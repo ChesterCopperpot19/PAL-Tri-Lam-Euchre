@@ -3,6 +3,7 @@
 
 import type { MatchRecord } from './shared-types';
 import type { BidEntry, HandSummary, Suit, Trick } from '@/server/engine/types';
+import { humanGames } from './stats-analytics';
 
 const SUIT_SYMBOL: Record<Suit, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
 const TEAM_OF: Record<number, 'NS' | 'EW'> = { 0: 'NS', 2: 'NS', 1: 'EW', 3: 'EW' };
@@ -131,4 +132,53 @@ export function handsToCSV(rows: HandRow[]): string {
     r.makerTricks, r.defenderTricks, bidsText(r), trickWinnersText(r),
   ]);
   return [headers, ...body].map((row) => row.map(csvCell).join(',')).join('\n');
+}
+
+// ── Calls by rank ────────────────────────────────────────────────────────────
+// A trump call's "rank" = the up-card rank that was ordered up (round 1). Round-2
+// calls name a suit with no card, so they fall in the "R2" bucket.
+
+export const CALL_RANKS = ['J', 'A', 'K', 'Q', '10', '9', 'R2'] as const;
+export type CallCategory = (typeof CALL_RANKS)[number];
+
+export type PlayerCallRow = {
+  name: string;
+  total: number;
+  counts: Record<CallCategory, number>;
+  pct: Record<CallCategory, number>; // share of that player's own calls (0..1)
+};
+
+const emptyCalls = (): Record<CallCategory, number> => ({ J: 0, A: 0, K: 0, Q: 0, '10': 0, '9': 0, R2: 0 });
+
+/** Club-wide call counts by rank + a per-player breakdown. Human games only. */
+export function computeCallRanks(matches: MatchRecord[]): {
+  byRank: Record<CallCategory, number>;
+  total: number;
+  players: PlayerCallRow[];
+} {
+  const byRank = emptyCalls();
+  const perPlayer = new Map<string, Record<CallCategory, number>>();
+  for (const m of humanGames(matches)) {
+    if (!m.hands || m.hands.length === 0) continue;
+    const seatName: string[] = [];
+    for (const p of m.players) seatName[p.seat] = p.name;
+    for (const h of m.hands) {
+      const cat: CallCategory = h.bidRound === 1 && h.upcard ? h.upcard.rank : 'R2';
+      byRank[cat] += 1;
+      const name = seatName[h.maker] || `Seat ${h.maker}`;
+      let pc = perPlayer.get(name);
+      if (!pc) { pc = emptyCalls(); perPlayer.set(name, pc); }
+      pc[cat] += 1;
+    }
+  }
+  const total = CALL_RANKS.reduce((s, c) => s + byRank[c], 0);
+  const players: PlayerCallRow[] = [...perPlayer.entries()]
+    .map(([name, counts]) => {
+      const t = CALL_RANKS.reduce((s, c) => s + counts[c], 0);
+      const pct = emptyCalls();
+      for (const c of CALL_RANKS) pct[c] = t ? counts[c] / t : 0;
+      return { name, total: t, counts, pct };
+    })
+    .sort((a, b) => b.total - a.total);
+  return { byRank, total, players };
 }
