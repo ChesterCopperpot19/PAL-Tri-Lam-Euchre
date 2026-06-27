@@ -168,7 +168,7 @@ export default function Leaderboard({
       <table className={`w-full text-sm ${full ? 'min-w-[1120px]' : 'min-w-[760px]'}`}>
         <thead className="text-white/60 text-[10px] uppercase tracking-wider">
           <tr>
-            <th className="text-right py-1 pr-2 w-8">#</th>
+            <th className="text-right py-1 pr-2 w-8 sticky left-0 z-20 bg-[#0b1330]">#</th>
             {cols.map((c) => {
               const active = c.key && c.key === sortKey;
               return (
@@ -177,7 +177,9 @@ export default function Leaderboard({
                   title={c.title}
                   className={`py-1 px-1.5 ${c.align === 'left' ? 'text-left' : 'text-right'} ${
                     c.key ? 'cursor-pointer select-none hover:text-white' : ''
-                  } ${active ? 'text-gold' : ''}`}
+                  } ${active ? 'text-gold' : ''} ${
+                    c.key === 'name' ? 'sticky left-8 z-20 bg-[#0b1330] border-r border-white/10' : ''
+                  }`}
                   onClick={c.key ? () => onSort(c.key!) : undefined}
                   aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                 >
@@ -191,13 +193,13 @@ export default function Leaderboard({
         <tbody>
           {rows.map((r, idx) => (
             <tr key={r.name} className={`border-t border-white/5 ${idx === 0 ? 'bg-gold/5' : ''}`}>
-              <td className="text-right py-1.5 pr-2 text-white/50 tabular-nums">{idx + 1}</td>
+              <td className="text-right py-1.5 pr-2 text-white/50 tabular-nums sticky left-0 z-10 bg-[#0b1330]">{idx + 1}</td>
               {cols.map((c) => (
                 <td
                   key={c.label}
                   className={`py-1.5 px-1.5 ${
                     c.align === 'left' ? 'text-left font-medium' : 'text-right tabular-nums'
-                  }`}
+                  } ${c.key === 'name' ? 'sticky left-8 z-10 bg-[#0b1330] border-r border-white/10' : ''}`}
                 >
                   {c.align === 'left' && idx === 0 && (
                     <span className="mr-1" aria-hidden>
