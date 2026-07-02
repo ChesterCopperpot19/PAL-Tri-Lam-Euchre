@@ -55,7 +55,7 @@ body {
 .card-sz-md {
   width: clamp(42px, min(7.7vh, 12.6vw), 70px);
   height: clamp(60px, min(11vh, 18vw), 100px);
-  font-size: clamp(8px, min(1.55vh, 2.5vw), 16px);
+  font-size: clamp(10px, min(1.55vh, 2.5vw), 16px);
 }
 .card-sz-sm { width: 48px; height: 68px; font-size: 13px; }
 .card-sz-lg { width: 84px; height: 120px; font-size: 18px; }

@@ -261,8 +261,9 @@ export default function Table({
             onClick={() => setShowRules(true)}
             className="text-xs text-white/60 hover:text-white"
             title="Show the house rules"
+            aria-label="Show the house rules"
           >
-            📖 Rules
+            📖<span className="hidden sm:inline"> Rules</span>
           </button>
           <button
             onClick={handlers.onLeave}
@@ -519,7 +520,7 @@ export default function Table({
       {/* "Loner swept" gag — full-screen photo for 7 seconds when someone takes all 5 alone. */}
       {lonerWonFx && (
         <div
-          className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 px-3 fade-in"
+          className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 px-3 fade-in pointer-events-none"
           aria-hidden
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}

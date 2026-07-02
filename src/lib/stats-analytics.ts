@@ -47,7 +47,7 @@ export type PlayerRow = {
   // ── Hand-level behavioral stats. bidPct works from any game (uses handsPlayed);
   //    the rest derive from the per-hand log and are null until a player has
   //    hand-logged games. ──
-  bidPct: number; // hands called ÷ hands dealt into — how often they take the call
+  bidPct: number | null; // calls ÷ hands dealt (games with a known hand count); null if none
   orderPct: number | null; // of their calls, share ordered up in round 1 (vs named round 2)
   netPtsPerCall: number | null; // net points their calls net the team, per call
   defEuchreRate: number | null; // euchres inflicted ÷ hands played on defense
@@ -139,7 +139,8 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
     pointsFor: number;
     pointsAgainst: number;
     margins: number[];
-    handsIn: number; // total hands dealt into (across all games)
+    handsIn: number; // hands dealt into, from games with a known hand count
+    callsForBid: number; // calls made in those same games (bidPct numerator)
     loggedCalls: number; // calls in hand-logged games
     callNet: number; // sum of (maker-team pts − defender-team pts) over their calls
     r1Calls: number; // logged calls that were round-1 order-ups
@@ -171,6 +172,7 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
         pointsAgainst: 0,
         margins: [],
         handsIn: 0,
+        callsForBid: 0,
         loggedCalls: 0,
         callNet: 0,
         r1Calls: 0,
@@ -205,7 +207,12 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
       a.pointsFor += myScore;
       a.pointsAgainst += oppScore;
       a.margins.push(myScore - oppScore);
-      a.handsIn += m.handsPlayed;
+      // Only games with a recorded hand count feed bidPct (manual games can log
+      // calls with handsPlayed=0, which would otherwise push Bid% over 100%).
+      if (m.handsPlayed > 0) {
+        a.handsIn += m.handsPlayed;
+        a.callsForBid += p.handsCalled;
+      }
     }
     // Hand-level behavioral stats — only games recorded with a per-hand log.
     if (m.hands && m.hands.length) {
@@ -234,7 +241,7 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
   return Array.from(map.values()).map((a) => {
     const {
       results, pointsFor, pointsAgainst, margins,
-      handsIn, loggedCalls, callNet, r1Calls, defHands, defEuchresLogged,
+      handsIn, callsForBid, loggedCalls, callNet, r1Calls, defHands, defEuchresLogged,
       ...rest
     } = a;
     const g = a.games || 1;
@@ -246,7 +253,7 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
       ppgAgainst: pointsAgainst / g,
       pointDiff: (pointsFor - pointsAgainst) / g,
       marginStd: stdev(margins),
-      bidPct: handsIn ? a.handsCalled / handsIn : 0,
+      bidPct: handsIn ? callsForBid / handsIn : null,
       orderPct: loggedCalls ? r1Calls / loggedCalls : null,
       netPtsPerCall: loggedCalls ? callNet / loggedCalls : null,
       defEuchreRate: defHands ? defEuchresLogged / defHands : null,

@@ -99,7 +99,7 @@ const COLS: Col[] = [
   { key: 'handsCalled', label: 'Called', title: 'Hands called (became maker)', extra: true, render: (r) => r.handsCalled },
   { key: 'callsWon', label: 'Made', title: 'Calls won (not euchred)', extra: true, render: (r) => r.callsWon },
   { key: 'callPct', label: 'Call%', title: 'Win rate when calling trump', render: (r) => pct(r.callPct) },
-  { key: 'bidPct', label: 'Bid%', title: 'How often you call trump (calls ÷ hands dealt)', extra: true, render: (r) => pct(r.bidPct) },
+  { key: 'bidPct', label: 'Bid%', title: 'How often you call trump (calls ÷ hands dealt)', extra: true, render: (r) => (r.bidPct == null ? <span className="text-white/30">—</span> : pct(r.bidPct)) },
   {
     key: 'orderPct',
     label: 'Ord%',

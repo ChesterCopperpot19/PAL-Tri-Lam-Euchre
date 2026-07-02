@@ -61,6 +61,8 @@ export default function GameOver({
             </h3>
             <button
               onClick={() => setShowCard((v) => !v)}
+              aria-expanded={showCard}
+              aria-label="Toggle the round scorecard"
               className="text-xs bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-2.5 py-1"
             >
               {showCard ? 'Hide' : 'Show'}

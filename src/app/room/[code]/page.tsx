@@ -221,7 +221,7 @@ export default function RoomPage() {
       {/* "Going alone" gag — full-screen photo for 7 seconds on any loner call. */}
       {lonerFx && (
         <div
-          className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/90 px-3 fade-in"
+          className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/90 px-3 fade-in pointer-events-none"
           aria-hidden
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}

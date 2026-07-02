@@ -148,7 +148,7 @@ export default function PlayerProfilePage() {
                   <dl className="text-sm space-y-1.5">
                     <Row k="Hands called" v={myRow.handsCalled} />
                     <Row k="Call success" v={`${myRow.callsWon}/${myRow.handsCalled} · ${pct(myRow.callPct)}`} />
-                    <Row k="Bid rate" v={pct(myRow.bidPct)} />
+                    <Row k="Bid rate" v={myRow.bidPct == null ? '—' : pct(myRow.bidPct)} />
                     <Row k="Order-up %" v={myRow.orderPct == null ? '—' : pct(myRow.orderPct)} />
                     <Row
                       k="Net pts / call"

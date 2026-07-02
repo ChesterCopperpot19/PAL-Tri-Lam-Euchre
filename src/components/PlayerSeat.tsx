@@ -47,7 +47,7 @@ export default function PlayerSeat({
             aria-hidden="true"
             title={member?.connected ? 'Connected' : 'Disconnected'}
             className={`inline-block w-2 h-2 rounded-full ${
-              member?.connected ? 'bg-gold' : 'bg-red-400'
+              member?.connected ? 'bg-gold' : 'bg-slate-400'
             }`}
           />
           <span className="sr-only">

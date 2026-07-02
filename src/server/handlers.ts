@@ -114,10 +114,11 @@ function buildMatchRecord(room: Room): MatchRecord {
           loneCalled++;
           if (!h.euchred) loneWon++;
         }
-      } else {
+      } else if (TEAM_OF[h.maker] !== team) {
+        // Only the DEFENDING team's tricks count as defensive — the maker's
+        // partner's tricks are attacking, not defensive.
         defensiveTricks += t;
-        // We euchred the maker while defending.
-        if (h.euchred && TEAM_OF[h.maker] !== team) defensiveEuchres++;
+        if (h.euchred) defensiveEuchres++; // we euchred the maker while defending
       }
     }
     return {
@@ -236,7 +237,9 @@ function scheduleBotTick(io: IO, room: Room) {
   const turnSeat = room.state.turn;
   const seated = room.seats[turnSeat];
   if (!seated || !seated.isBot) return;
-  if (room.state.sittingOut.includes(turnSeat as 0 | 1 | 2 | 3)) return;
+  // Sitting-out seats are only skipped during play (turn-advance already avoids
+  // landing on them). A sitting-out DEALER must still discard, or the hand freezes.
+  if (phase === 'PLAYING' && room.state.sittingOut.includes(turnSeat as 0 | 1 | 2 | 3)) return;
 
   // Detect: did a trick just complete? (completedTricks grew since last call.)
   const prevCount = room.lastTrickCount;
@@ -278,7 +281,8 @@ function scheduleHumanTurnTimer(io: IO, room: Room) {
   const turnSeat = room.state.turn;
   const seated = room.seats[turnSeat];
   if (!seated || seated.isBot) return; // bots are handled by scheduleBotTick
-  if (room.state.sittingOut.includes(turnSeat)) return;
+  // Only skip sitting-out seats during play — a sitting-out dealer must discard.
+  if (room.state.phase === 'PLAYING' && room.state.sittingOut.includes(turnSeat)) return;
   if (seated.socketId) return; // connected human → unlimited time, no auto-play
 
   room.turnTimer = setTimeout(() => {
@@ -529,8 +533,8 @@ export function attachHandlers(io: IO) {
     });
 
     socket.on('room:nextHand', () => {
-      const ctx = getSessionRoom(socket);
-      if (!ctx) return err(socket, 'not in a room');
+      const ctx = getSeatedSession(socket);
+      if (!ctx) return err(socket, 'only seated players can advance');
       const { room } = ctx;
       if (room.state.phase !== 'HAND_END') return err(socket, 'no hand to advance');
       try {

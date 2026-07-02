@@ -113,8 +113,10 @@ export default function StatsPage() {
   const matches = useMemo(
     () =>
       filterMatches(allMatches, {
-        from: dateFrom ? Date.parse(dateFrom) : undefined,
-        to: dateTo ? Date.parse(dateTo) + 86_399_999 : undefined, // include the whole end day
+        // Parse the date-input values in LOCAL time (match timestamps are local
+        // epoch); Date.parse('YYYY-MM-DD') would treat them as UTC and shift days.
+        from: dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : undefined,
+        to: dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : undefined,
         source: source === 'all' ? undefined : source,
       }),
     [allMatches, dateFrom, dateTo, source]

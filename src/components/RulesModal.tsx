@@ -36,6 +36,7 @@ export default function RulesModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-display text-2xl text-gold">House Rules</h2>
           <button
+            autoFocus
             onClick={onClose}
             className="text-white/70 hover:text-white text-sm bg-white/10 border border-white/15 rounded-lg px-3 py-1"
           >

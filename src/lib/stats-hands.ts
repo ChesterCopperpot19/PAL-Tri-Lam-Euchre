@@ -52,7 +52,7 @@ export type HandRow = {
 /** One row per hand, newest game first, across every match that has a hand log. */
 export function flattenHands(matches: MatchRecord[]): HandRow[] {
   const rows: HandRow[] = [];
-  for (const m of matches) {
+  for (const m of humanGames(matches)) {
     if (!m.hands || m.hands.length === 0) continue;
     const seatNames: string[] = ['', '', '', ''];
     for (const p of m.players) seatNames[p.seat] = p.name;
@@ -111,7 +111,8 @@ function trickWinnersText(row: HandRow): string {
 }
 
 function csvCell(v: unknown): string {
-  const s = String(v ?? '');
+  let s = String(v ?? '');
+  if (/^[=+@]/.test(s)) s = `'${s}`; // neutralize spreadsheet formula injection
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
