@@ -58,7 +58,7 @@ export default function BiddingPanel({
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => onOrder(alone)}
-              className="px-3 py-1.5 rounded-lg bg-pitt-blue hover:bg-[#1f4ea3] text-sm font-medium"
+              className="px-3 py-1.5 rounded-lg bg-pitt-blueDk hover:bg-[#22306e] text-sm font-medium"
             >
               {isDealer ? 'Pick it up' : `Have ${dealerName} pick it up`}{' '}
               <SuitGlyph suit={state.upcard.suit} size={16} />
@@ -90,7 +90,7 @@ export default function BiddingPanel({
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
                   disabled
                     ? 'bg-white/5 text-white/30 cursor-not-allowed'
-                    : 'bg-pitt-blue hover:bg-[#1f4ea3]'
+                    : 'bg-pitt-blueDk hover:bg-[#22306e]'
                 }`}
                 title={disabled ? 'Cannot call the upcard suit in round 2' : ''}
               >

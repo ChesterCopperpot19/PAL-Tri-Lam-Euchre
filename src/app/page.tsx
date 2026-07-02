@@ -128,7 +128,7 @@ export default function LandingPage() {
           <button
             disabled={busy || code.length < 4}
             onClick={() => go(false, code)}
-            className="bg-pitt-blue hover:bg-[#1f4ea3] rounded-lg py-2.5 font-medium disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:outline-none"
+            className="bg-pitt-blueDk hover:bg-[#22306e] rounded-lg py-2.5 font-medium disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:outline-none"
           >
             Join as Player
           </button>
@@ -202,7 +202,7 @@ export default function LandingPage() {
                       <button
                         disabled={busy || !name.trim()}
                         onClick={() => joinListed(r.code, false)}
-                        className="text-xs bg-pitt-blue hover:bg-[#1f4ea3] rounded-md px-2.5 py-1.5 font-medium disabled:opacity-40"
+                        className="text-xs bg-pitt-blueDk hover:bg-[#22306e] rounded-md px-2.5 py-1.5 font-medium disabled:opacity-40"
                         title={!name.trim() ? 'Enter a name first' : 'Join this game'}
                       >
                         Join

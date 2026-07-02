@@ -154,7 +154,7 @@ export default function Lobby({
                   {!m && isHost && (
                     <button
                       onClick={() => onAddBot(i as 0 | 1 | 2 | 3)}
-                      className="text-[10px] uppercase tracking-wider bg-pitt-blue hover:bg-[#1f4ea3] rounded px-1.5 py-0.5"
+                      className="text-[10px] uppercase tracking-wider bg-pitt-blueDk hover:bg-[#22306e] rounded px-1.5 py-0.5"
                     >
                       + Bot
                     </button>
@@ -189,7 +189,7 @@ export default function Lobby({
         <div className="flex justify-center">
           <button
             onClick={onFillBots}
-            className="text-xs uppercase tracking-wider bg-pitt-blue hover:bg-[#1f4ea3] text-white rounded-lg px-3 py-2"
+            className="text-xs uppercase tracking-wider bg-pitt-blueDk hover:bg-[#22306e] text-white rounded-lg px-3 py-2"
           >
             Fill empty seats with bots
           </button>
