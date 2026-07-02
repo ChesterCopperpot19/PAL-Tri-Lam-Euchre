@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import type { MatchRecord, PlayerMatchStat } from '../src/lib/shared-types';
 import type { HandSummary, SeatIndex, Trick } from '../src/server/engine/types';
-import { flattenHands, handsToCSV, handResultLabel } from '../src/lib/stats-hands';
+import { flattenHands, handsToCSV, handResultLabel, slimMatchForList } from '../src/lib/stats-hands';
 
 const p = (name: string, seat: SeatIndex, team: 'NS' | 'EW'): PlayerMatchStat => ({
   name, seat, team, isBot: false, tricks: 0, defensiveTricks: 0, handsCalled: 0,
@@ -69,6 +69,47 @@ check('CSV = header + one row, with bids and trick winners serialized', () => {
   assert.ok(lines[1].includes('Lone march'));
   assert.ok(lines[1].includes('order')); // bid sequence present
   assert.ok(lines[1].includes('T1:Bob')); // trick winners present
+});
+
+// ── Payload slimming (the on-demand hand-detail split) ───────────────────────
+check('slimMatchForList drops bids/tricks but keeps every summary field', () => {
+  const slim = slimMatchForList(match);
+  assert.ok(slim.hands);
+  const sh = slim.hands[0];
+  assert.equal(sh.bids, undefined);
+  assert.equal(sh.tricks, undefined);
+  assert.equal(sh.trump, 'S');
+  assert.equal(sh.maker, 1);
+  assert.equal(sh.alone, true);
+  assert.deepEqual(sh.tricksByTeam, { NS: 0, EW: 5 });
+  assert.deepEqual(sh.pointsAwarded, { NS: 0, EW: 4 });
+  assert.equal(sh.march, true);
+  assert.equal(sh.dealer, 0);
+  assert.deepEqual(sh.upcard, { suit: 'S', rank: 'J', id: 'JS' });
+  assert.equal(sh.bidRound, 1);
+  assert.equal(sh.orderedUp, true);
+  assert.ok(match.hands); // original left untouched
+  assert.equal(match.hands[0].tricks?.length, 5);
+});
+check('slim rows keep all table metadata; only bids/tricks go empty', () => {
+  const full = rows[0];
+  const s = flattenHands([slimMatchForList(match)])[0];
+  assert.equal(s.maker, full.maker);
+  assert.equal(s.dealer, full.dealer);
+  assert.equal(s.trump, full.trump);
+  assert.equal(s.upcard, full.upcard);
+  assert.equal(s.result, full.result);
+  assert.equal(s.points, full.points);
+  assert.equal(s.makerTricks, full.makerTricks);
+  assert.equal(s.defenderTricks, full.defenderTricks);
+  assert.equal(s.bids.length, 0); // heavy detail absent until merged back
+  assert.equal(s.tricks.length, 0);
+});
+check('merging full hands back by id restores bids & tricks', () => {
+  const merged = { ...slimMatchForList(match), hands: match.hands }; // simulate stats:hands merge
+  const mr = flattenHands([merged])[0];
+  assert.ok(mr.bids.length > 0);
+  assert.equal(mr.tricks.length, 5);
 });
 
 console.log(`\nAll ${passed} hand-data checks passed ✅`);

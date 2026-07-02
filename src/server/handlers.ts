@@ -12,9 +12,10 @@ import {
   RoomSnapshot,
   ServerToClientEvents,
 } from '@/lib/shared-types';
-import { TEAM_OF, type SeatIndex } from './engine/types';
+import { TEAM_OF, type HandSummary, type SeatIndex } from './engine/types';
 import { deleteMatch, getMatches, recordMatch } from './stats-store';
 import { buildManualMatch, validateManualInput } from '@/lib/manual-match';
+import { slimMatchForList } from '@/lib/stats-hands';
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents>;
 type S = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -382,10 +383,12 @@ export function attachHandlers(io: IO) {
     socket.on('stats:get', async (ack) => {
       try {
         const all = await getMatches();
-        const recent = all.slice().reverse(); // most recent first
-        // Send the full history — the dashboard derives every metric client-side
-        // (leaderboard, duos, head-to-head, streaks) and needs all games to do so.
-        // Records are tiny; the store is capped at 5000.
+        // Most recent first, with each hand slimmed to its summary. The dashboard
+        // derives every default metric (leaderboard, duos, head-to-head, streaks,
+        // calls-by-rank, the hand table) from summaries; the heavy per-card
+        // bids/tricks load on demand via `stats:hands` when the full data set is
+        // expanded. Keeps this common payload small as the hand log grows.
+        const recent = all.slice().reverse().map(slimMatchForList);
         ack({
           matches: recent,
           players: aggregatePlayers(all),
@@ -395,6 +398,23 @@ export function attachHandlers(io: IO) {
         // eslint-disable-next-line no-console
         console.error('stats:get failed:', (e as Error).message);
         ack({ matches: [], players: [], totalMatches: 0 });
+      }
+    });
+
+    // Heavy per-hand detail (bids + tricks) for the expandable hand-level view.
+    // Read-only, same exposure as stats:get; fetched only when a client opens the
+    // full data set, so the default dashboard payload stays small.
+    socket.on('stats:hands', async (ack) => {
+      try {
+        const all = await getMatches();
+        const games = all
+          .filter((m) => m.hands && m.hands.length)
+          .map((m) => ({ id: m.id, hands: m.hands as HandSummary[] }));
+        ack({ games });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('stats:hands failed:', (e as Error).message);
+        ack({ games: [] });
       }
     });
 

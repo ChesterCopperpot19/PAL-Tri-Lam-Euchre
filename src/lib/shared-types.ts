@@ -111,12 +111,20 @@ export type PlayerAllTime = {
 };
 
 export type StatsPayload = {
-  /** Most-recent matches first (capped). */
+  /** Most-recent matches first (capped). Each hand carries its SUMMARY only —
+   *  the heavy per-card `bids`/`tricks` are omitted and fetched via `stats:hands`. */
   matches: MatchRecord[];
   /** Human players, aggregated all-time, sorted by wins. */
   players: PlayerAllTime[];
   /** Total matches recorded overall. */
   totalMatches: number;
+};
+
+/** On-demand payload of the heavy per-hand detail (bids + tricks), keyed by game
+ *  id. Fetched only when the hand-level detail view is expanded; the default
+ *  `stats:get` payload omits these fields to keep dashboard loads small. */
+export type HandsPayload = {
+  games: Array<{ id: string; hands: HandSummary[] }>;
 };
 
 /** Public summary of a room shown on the landing page. */
@@ -156,6 +164,7 @@ export type ClientToServerEvents = {
     ack: (rooms: RoomListEntry[]) => void
   ) => void;
   'stats:get': (ack: (payload: StatsPayload) => void) => void;
+  'stats:hands': (ack: (payload: HandsPayload) => void) => void;
   'stats:add': (
     payload: ManualMatchInput,
     ack: (res: { ok: true } | { ok: false; error: string }) => void

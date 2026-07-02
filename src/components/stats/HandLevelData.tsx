@@ -1,6 +1,8 @@
 'use client';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { MatchRecord } from '@/lib/shared-types';
+import type { HandSummary } from '@/server/engine/types';
+import { getSocket } from '@/lib/socket-client';
 import { flattenHands, handsToCSV, cardText, suitSymbol, type HandRow } from '@/lib/stats-hands';
 
 function shortDate(ts: number): string {
@@ -30,7 +32,8 @@ function ResultBadge({ result }: { result: string }) {
   return <span className={cls}>{result}</span>;
 }
 
-function HandDetail({ row }: { row: HandRow }) {
+function HandDetail({ row, loading }: { row: HandRow; loading: boolean }) {
+  const placeholder = loading ? 'Loading…' : '—';
   return (
     <div className="space-y-2 text-xs">
       <div>
@@ -43,7 +46,7 @@ function HandDetail({ row }: { row: HandRow }) {
       <div>
         <span className="text-white/45 uppercase tracking-wider text-[10px]">Bidding</span>{' '}
         {row.bids.length === 0 ? (
-          <span className="text-white/40">—</span>
+          <span className="text-white/40">{placeholder}</span>
         ) : (
           row.bids.map((b, i) => (
             <span key={i} className="text-white/80">
@@ -64,7 +67,7 @@ function HandDetail({ row }: { row: HandRow }) {
       <div className="space-y-0.5">
         <span className="text-white/45 uppercase tracking-wider text-[10px]">Tricks</span>
         {row.tricks.length === 0 ? (
-          <div className="text-white/40">—</div>
+          <div className="text-white/40">{placeholder}</div>
         ) : (
           row.tricks.map((t, i) => (
             <div key={i} className="text-white/80">
@@ -88,7 +91,32 @@ function HandDetail({ row }: { row: HandRow }) {
 
 /** The full hand-level data set: one row per hand, expandable to bids & tricks. */
 export default function HandLevelData({ matches }: { matches: MatchRecord[] }) {
-  const rows = useMemo(() => flattenHands(matches), [matches]);
+  // The heavy per-hand detail (bids + tricks) is omitted from the default stats
+  // payload. This section only mounts when the user expands it, so fetch the full
+  // detail once here and merge it back into the (already filtered) matches by id.
+  const [fullById, setFullById] = useState<Map<string, HandSummary[]> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getSocket().emit('stats:hands', (payload) => {
+      if (!alive) return;
+      const map = new Map<string, HandSummary[]>();
+      for (const g of payload.games) map.set(g.id, g.hands);
+      setFullById(map);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const loadingDetail = fullById === null;
+
+  const detailed = useMemo(
+    () =>
+      fullById
+        ? matches.map((m) => (fullById.has(m.id) ? { ...m, hands: fullById.get(m.id) } : m))
+        : matches,
+    [matches, fullById]
+  );
+  const rows = useMemo(() => flattenHands(detailed), [detailed]);
   const gameCount = useMemo(() => new Set(rows.map((r) => r.gameId)).size, [rows]);
   const [open, setOpen] = useState<string | null>(null);
 
@@ -115,12 +143,14 @@ export default function HandLevelData({ matches }: { matches: MatchRecord[] }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-[11px] text-white/45">
-          {rows.length} hands across {gameCount} game{gameCount === 1 ? '' : 's'} · tap a row for bids
-          &amp; tricks
+          {rows.length} hands across {gameCount} game{gameCount === 1 ? '' : 's'} ·{' '}
+          {loadingDetail ? 'loading bids & tricks…' : 'tap a row for bids & tricks'}
         </p>
         <button
           onClick={download}
-          className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
+          disabled={loadingDetail}
+          title={loadingDetail ? 'Loading full hand detail…' : 'Download the full hand-level CSV'}
+          className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           ⬇️ Hand CSV
         </button>
@@ -176,7 +206,7 @@ export default function HandLevelData({ matches }: { matches: MatchRecord[] }) {
                   {isOpen && (
                     <tr className="bg-black/30">
                       <td colSpan={11} className="px-3 py-2">
-                        <HandDetail row={r} />
+                        <HandDetail row={r} loading={loadingDetail} />
                       </td>
                     </tr>
                   )}

@@ -49,6 +49,23 @@ export type HandRow = {
   tricks: Trick[];
 };
 
+/** Return a copy of a match with each hand's heavy per-card fields (bids, tricks)
+ *  removed, keeping every summary field. The default `stats:get` payload ships
+ *  these slimmed hands; full bids/tricks load on demand via `stats:hands`. Pure —
+ *  the original match is left untouched. */
+export function slimMatchForList(m: MatchRecord): MatchRecord {
+  if (!m.hands) return m;
+  return {
+    ...m,
+    hands: m.hands.map((h) => {
+      const summary = { ...h };
+      delete summary.bids;
+      delete summary.tricks;
+      return summary;
+    }),
+  };
+}
+
 /** One row per hand, newest game first, across every match that has a hand log. */
 export function flattenHands(matches: MatchRecord[]): HandRow[] {
   const rows: HandRow[] = [];
