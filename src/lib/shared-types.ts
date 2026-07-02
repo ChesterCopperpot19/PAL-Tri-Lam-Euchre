@@ -170,8 +170,8 @@ export type ClientToServerEvents = {
     ack: (res: { ok: true } | { ok: false; error: string }) => void
   ) => void;
   'stats:delete': (
-    payload: { id: string },
-    ack: (res: { ok: true } | { ok: false; error: string }) => void
+    payload: { id: string; key: string },
+    ack: (res: { ok: true } | { ok: false; error: string; code?: 'auth' }) => void
   ) => void;
   'bid:order': (payload: { alone: boolean }) => void;
   'bid:pass': () => void;

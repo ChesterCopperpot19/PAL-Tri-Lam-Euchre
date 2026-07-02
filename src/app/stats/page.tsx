@@ -90,6 +90,18 @@ export default function StatsPage() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // Admin unlock: deleting games requires the shared admin key (checked server-
+  // side). Stored per-browser so an admin enters it once; delete controls stay
+  // hidden until unlocked. The real gate is on the server — this is just UX.
+  const [adminKey, setAdminKey] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      setAdminKey(localStorage.getItem('euchre_admin_key'));
+    } catch {
+      /* localStorage unavailable — stays locked */
+    }
+  }, []);
+
   const load = useCallback(() => {
     getSocket().emit('stats:get', (payload) => {
       setData(payload);
@@ -100,11 +112,41 @@ export default function StatsPage() {
     load();
   }, [load]);
 
+  function unlockAdmin() {
+    const entered = window.prompt('Enter the stats admin key to enable deleting games:');
+    if (entered == null) return; // cancelled
+    const k = entered.trim();
+    if (!k) return;
+    try {
+      localStorage.setItem('euchre_admin_key', k);
+    } catch {
+      /* ignore */
+    }
+    setAdminKey(k);
+  }
+  function lockAdmin() {
+    try {
+      localStorage.removeItem('euchre_admin_key');
+    } catch {
+      /* ignore */
+    }
+    setAdminKey(null);
+  }
+
   function onDelete(id: string) {
+    if (!adminKey) return; // delete controls are hidden while locked
     if (!window.confirm('Delete this game from the stats? This cannot be undone.')) return;
-    getSocket().emit('stats:delete', { id }, (res) => {
-      if (res.ok) load();
-      else window.alert(res.error);
+    getSocket().emit('stats:delete', { id, key: adminKey }, (res) => {
+      if (res.ok) {
+        load();
+        return;
+      }
+      if (res.code === 'auth') {
+        lockAdmin();
+        window.alert(`${res.error}\n\nThe saved key was cleared — click “Admin” to re-enter it.`);
+      } else {
+        window.alert(res.error);
+      }
     });
   }
 
@@ -488,7 +530,22 @@ export default function StatsPage() {
           </Section>
 
           {/* Recent matches */}
-          <Section title="Recent games">
+          <Section
+            title="Recent games"
+            right={
+              <button
+                onClick={adminKey ? lockAdmin : unlockAdmin}
+                title={
+                  adminKey
+                    ? 'Admin unlocked — click to lock deleting again'
+                    : 'Enter the admin key to enable deleting games'
+                }
+                className="text-xs text-white/50 hover:text-white/80 border border-white/15 rounded-lg px-2.5 py-1"
+              >
+                {adminKey ? '🔒 Admin ✓' : '🔓 Admin'}
+              </button>
+            }
+          >
             <div className="space-y-2">
               {recent.map((m) => {
                 const ns = m.players.filter((p) => p.team === 'NS').map((p) => p.name);
@@ -525,14 +582,16 @@ export default function StatsPage() {
                         <span className="text-white/60 text-xs whitespace-nowrap">
                           {m.finalScore.NS}–{m.finalScore.EW}
                         </span>
-                        <button
-                          onClick={() => onDelete(m.id)}
-                          aria-label="Delete this game"
-                          title="Delete this game"
-                          className="text-white/30 hover:text-red-300 px-1 sm:opacity-0 sm:group-hover:opacity-100 transition"
-                        >
-                          ✕
-                        </button>
+                        {adminKey && (
+                          <button
+                            onClick={() => onDelete(m.id)}
+                            aria-label="Delete this game"
+                            title="Delete this game"
+                            className="text-white/30 hover:text-red-300 px-1 sm:opacity-0 sm:group-hover:opacity-100 transition"
+                          >
+                            ✕
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="text-[11px] text-white/40 mt-0.5 flex items-center gap-1.5">

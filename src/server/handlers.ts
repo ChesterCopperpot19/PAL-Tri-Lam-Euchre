@@ -16,6 +16,7 @@ import { TEAM_OF, type HandSummary, type SeatIndex } from './engine/types';
 import { deleteMatch, getMatches, recordMatch } from './stats-store';
 import { buildManualMatch, validateManualInput } from '@/lib/manual-match';
 import { slimMatchForList } from '@/lib/stats-hands';
+import { isStatsAdmin } from '@/lib/stats-auth';
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents>;
 type S = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -438,10 +439,13 @@ export function attachHandlers(io: IO) {
     });
 
     // Delete a recorded game (e.g. a mistaken manual entry).
-    socket.on('stats:delete', async ({ id }, ack) => {
+    socket.on('stats:delete', async ({ id, key }, ack) => {
       try {
         if (!allowStatWrite(socket.id)) {
           return ack({ ok: false, error: 'Too many requests — give it a moment.' });
+        }
+        if (!isStatsAdmin(key)) {
+          return ack({ ok: false, error: 'Not authorized — enter the admin key to delete games.', code: 'auth' });
         }
         if (!id || typeof id !== 'string') return ack({ ok: false, error: 'Missing game id.' });
         const removed = await deleteMatch(id);
