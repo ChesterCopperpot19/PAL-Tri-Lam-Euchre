@@ -1,7 +1,7 @@
 // Per-player profile bundle + radar metrics. Pure; derived from match history.
 
 import type { MatchRecord } from './shared-types';
-import { humanGames, type PlayerRow } from './stats-analytics';
+import { humanGames, nameKey, type PlayerRow } from './stats-analytics';
 
 const norm = (s: string) => s.trim();
 
@@ -86,11 +86,16 @@ export type PlayerProfile = {
 };
 
 export function computeProfile(name: string, matches: MatchRecord[]): PlayerProfile {
-  const target = norm(name);
+  // Match case-insensitively (humanGames canonicalizes casing, but the URL may
+  // arrive in any case). Display name = the canonical casing from the records.
+  const targetKey = nameKey(name);
   const games = humanGames(matches)
     .slice()
     .sort((a, b) => a.ts - b.ts)
-    .filter((m) => m.players.some((p) => norm(p.name) === target));
+    .filter((m) => m.players.some((p) => nameKey(p.name) === targetKey));
+  const target = games.length
+    ? norm(games[0].players.find((p) => nameKey(p.name) === targetKey)!.name)
+    : norm(name);
 
   const partners = new Map<string, { games: number; wins: number; losses: number; pf: number }>();
   const opps = new Map<string, { games: number; wins: number; losses: number }>();
@@ -103,14 +108,14 @@ export function computeProfile(name: string, matches: MatchRecord[]): PlayerProf
   let cumWins = 0;
 
   games.forEach((m, idx) => {
-    const me = m.players.find((p) => norm(p.name) === target)!;
+    const me = m.players.find((p) => nameKey(p.name) === targetKey)!;
     const win = me.team === m.winnerTeam;
     const myScore = m.finalScore[me.team];
     const oppScore = m.finalScore[me.team === 'NS' ? 'EW' : 'NS'];
     wins += win ? 1 : 0;
     losses += win ? 0 : 1;
 
-    const partner = m.players.find((p) => p.team === me.team && norm(p.name) !== target);
+    const partner = m.players.find((p) => p.team === me.team && nameKey(p.name) !== targetKey);
     if (partner) {
       const k = norm(partner.name);
       const a = partners.get(k) ?? { games: 0, wins: 0, losses: 0, pf: 0 };

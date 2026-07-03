@@ -8,7 +8,7 @@ export default function SuperlativeCards({ awards }: { awards: Superlative[] }) 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
       {awards.map((a) => {
-        const earned = a.player !== null;
+        const earned = a.player !== null || (a.players?.length ?? 0) > 0;
         return (
           <div
             key={a.id}
@@ -30,8 +30,22 @@ export default function SuperlativeCards({ awards }: { awards: Superlative[] }) 
                 {a.title}
               </span>
             </div>
-            <div className="font-display text-lg sm:text-xl text-white leading-tight truncate" title={a.player ?? ''}>
-              {a.player ? <PlayerLink name={a.player} /> : '—'}
+            <div
+              className="font-display text-lg sm:text-xl text-white leading-tight truncate"
+              title={a.players?.length ? a.players.join(' & ') : a.player ?? ''}
+            >
+              {a.players?.length ? (
+                a.players.map((n, i) => (
+                  <span key={n}>
+                    {i > 0 && <span className="text-white/40"> & </span>}
+                    <PlayerLink name={n} />
+                  </span>
+                ))
+              ) : a.player ? (
+                <PlayerLink name={a.player} />
+              ) : (
+                '—'
+              )}
             </div>
             <div className="text-sm text-white/90 font-medium">{a.value}</div>
             <div className="text-[11px] text-white/50 leading-snug mt-0.5">

@@ -16,32 +16,24 @@ import {
 } from '@/lib/stats-analytics';
 import { computeElo, mostImproved } from '@/lib/stats-elo';
 import { computeBadges } from '@/lib/stats-achievements';
+import { computeClutch } from '@/lib/stats-clutch';
+import { computeSessions } from '@/lib/stats-sessions';
 import { playersToCSV } from '@/lib/stats-csv';
 import SuperlativeCards from '@/components/stats/SuperlativeCards';
 import Leaderboard, { type RankedRow, type LeaderKey } from '@/components/stats/Leaderboard';
 import AchievementsStrip from '@/components/stats/AchievementsStrip';
-import PlayerLink from '@/components/stats/PlayerLink';
 import DuosSection from '@/components/stats/DuosSection';
 import FrenemyTable from '@/components/stats/FrenemyTable';
 import PartnershipHeatmap from '@/components/stats/PartnershipHeatmap';
 import CallsByRank from '@/components/stats/CallsByRank';
+import CallsBySuit from '@/components/stats/CallsBySuit';
+import DealerAnalytics from '@/components/stats/DealerAnalytics';
+import LuckIndex from '@/components/stats/LuckIndex';
 import PartnershipScatter from '@/components/stats/PartnershipScatter';
-import { WinPctChart, VolumeChart } from '@/components/stats/StatCharts';
+import { EloTimelineChart, VolumeChart } from '@/components/stats/StatCharts';
 import HandLevelData from '@/components/stats/HandLevelData';
-
-function formatDate(ts: number): string {
-  try {
-    return new Date(ts).toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  } catch {
-    return '';
-  }
-}
+import SessionRecap from '@/components/stats/SessionRecap';
+import GameRow from '@/components/stats/GameRow';
 
 /** A titled dashboard panel. */
 function Section({
@@ -85,6 +77,8 @@ export default function StatsPage() {
   const [source, setSource] = useState<'all' | 'app' | 'manual' | 'historical'>('all');
   const [fullStats, setFullStats] = useState(true); // leaderboard: all stat columns (default on)
   const [showHands, setShowHands] = useState(false); // full hand-level data set (collapsed by default)
+  const [showDealer, setShowDealer] = useState(false); // dealer analytics (loads heavy bid logs)
+  const [showLuck, setShowLuck] = useState(false); // luck index (loads heavy trick logs)
 
   // Charts render client-only (canvas), so gate them until after mount.
   const [mounted, setMounted] = useState(false);
@@ -168,8 +162,11 @@ export default function StatsPage() {
   const duos = useMemo(() => computeDuos(matches), [matches]);
   const h2h = useMemo(() => computeHeadToHead(matches), [matches]);
   const elo = useMemo(() => computeElo(matches), [matches]);
-  const badges = useMemo(() => computeBadges(players, elo), [players, elo]);
+  const badges = useMemo(() => computeBadges(matches, players, elo), [matches, players, elo]);
   const improved = useMemo(() => mostImproved(elo), [elo]);
+  const clutch = useMemo(() => computeClutch(matches), [matches]);
+  const sessions = useMemo(() => computeSessions(matches), [matches]);
+  const lastSession = sessions.length ? sessions[sessions.length - 1] : null;
 
   // Lowest-Elo player among the qualified set (gets the WFEPE card + seahorse).
   const lowestEloName = useMemo<string | null>(() => {
@@ -203,8 +200,61 @@ export default function StatsPage() {
       value: lowestEloName ? `${elo.get(lowestEloName)?.rating ?? '—'}` : '—',
       sub: lowestEloName ? 'lowest Elo' : undefined,
     };
-    return [mi, wfepe, ...base];
-  }, [players, minGames, improved, lowestEloName, elo]);
+
+    // ── Clutch cards (from the hand-by-hand score log) ──
+    const closeQualified = clutch.players.filter((p) => p.closeGames >= 3);
+    const closer = closeQualified.length
+      ? closeQualified.reduce((best, p) =>
+          p.closeWinPct > best.closeWinPct ||
+          (p.closeWinPct === best.closeWinPct && p.closeGames > best.closeGames)
+            ? p
+            : best
+        )
+      : null;
+    const closerCard: Superlative = {
+      id: 'closer',
+      emoji: '🔒',
+      title: 'The Closer',
+      blurb: 'Best record in close games (min 3, decided by ≤2)',
+      player: closer ? closer.name : null,
+      value: closer ? `${Math.round(closer.closeWinPct * 100)}%` : '—',
+      sub: closer ? `${closer.closeWins}–${closer.closeLosses} in close games` : undefined,
+    };
+
+    const cb = clutch.biggestComeback;
+    const comebackCard: Superlative = {
+      id: 'comeback',
+      emoji: '🚀',
+      title: 'Comeback Kings',
+      blurb: 'Biggest deficit ever overcome',
+      player: cb ? cb.names[0] : null,
+      players: cb ? cb.names : undefined,
+      value: cb ? `down ${cb.deficit}` : '—',
+      sub: cb
+        ? `won ${cb.match.finalScore[cb.team]}–${
+            cb.match.finalScore[cb.team === 'NS' ? 'EW' : 'NS']
+          }`
+        : undefined,
+    };
+
+    const heartbreak = clutch.players
+      .filter((p) => (p.blownLeads ?? 0) > 0)
+      .reduce<(typeof clutch.players)[number] | null>(
+        (worst, p) => (!worst || (p.blownLeads ?? 0) > (worst.blownLeads ?? 0) ? p : worst),
+        null
+      );
+    const heartbreakCard: Superlative = {
+      id: 'heartbreaker',
+      emoji: '💔',
+      title: 'The Heartbreaker',
+      blurb: 'Most 5+ point leads lost',
+      player: heartbreak ? heartbreak.name : null,
+      value: heartbreak ? `${heartbreak.blownLeads}` : '—',
+      sub: heartbreak ? 'blown 5+ point leads' : undefined,
+    };
+
+    return [mi, wfepe, closerCard, comebackCard, heartbreakCard, ...base];
+  }, [players, minGames, improved, lowestEloName, elo, clutch]);
 
   // Merge Elo onto each player for the leaderboard.
   const ranked = useMemo<RankedRow[]>(
@@ -309,6 +359,9 @@ export default function StatsPage() {
         </div>
       ) : (
         <div className="space-y-5">
+          {/* Last game night at a glance */}
+          {lastSession && <SessionRecap session={lastSession} />}
+
           {/* Leaderboard — top of page */}
           <Section
             title="Leaderboard"
@@ -469,22 +522,23 @@ export default function StatsPage() {
           </section>
 
           {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <Section title="Win % ranking" note={`Players with ≥ ${minGames} games`}>
-              {mounted && qualified.length > 0 ? (
-                <WinPctChart players={qualified} />
-              ) : (
-                <p className="text-white/40 text-sm">Not enough qualifying players.</p>
-              )}
-            </Section>
-            <Section title="Who shows up" note="Total games played">
-              {mounted && players.length > 0 ? (
-                <VolumeChart players={players} />
-              ) : (
-                <p className="text-white/40 text-sm">No games yet.</p>
-              )}
-            </Section>
-          </div>
+          <Section
+            title="Elo over time"
+            note={`Every rated game, players with ≥ ${minGames} games — the story of the rivalry`}
+          >
+            {mounted && qualified.length > 0 ? (
+              <EloTimelineChart elo={elo} names={qualified.map((p) => p.name)} />
+            ) : (
+              <p className="text-white/40 text-sm">Not enough qualifying players.</p>
+            )}
+          </Section>
+          <Section title="Who shows up" note="Total games played">
+            {mounted && players.length > 0 ? (
+              <VolumeChart players={players} />
+            ) : (
+              <p className="text-white/40 text-sm">No games yet.</p>
+            )}
+          </Section>
 
           {/* Partnership matrix */}
           <Section title="Partnership matrix" note="Win % when two players partner up">
@@ -500,6 +554,66 @@ export default function StatsPage() {
               <CallsByRank matches={matches} />
             ) : (
               <p className="text-white/40 text-sm">Loading…</p>
+            )}
+          </Section>
+
+          {/* Calls by suit */}
+          <Section
+            title="Calls by suit"
+            note="Which trump suits players like to call — and how those calls work out"
+          >
+            {mounted ? (
+              <CallsBySuit matches={matches} />
+            ) : (
+              <p className="text-white/40 text-sm">Loading…</p>
+            )}
+          </Section>
+
+          {/* Dealer & position */}
+          <Section
+            title="Dealer & position"
+            note="The measured dealer advantage, call rates by seat, and stuck dealers"
+            right={
+              <button
+                onClick={() => setShowDealer((v) => !v)}
+                aria-pressed={showDealer}
+                className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
+              >
+                {showDealer ? 'Collapse' : '🃏 Expand'}
+              </button>
+            }
+          >
+            {showDealer ? (
+              <DealerAnalytics matches={matches} />
+            ) : (
+              <p className="text-white/45 text-sm">
+                Expand to see how big the dealer advantage really is, who calls from where, and how
+                stuck dealers fare. Loads the full bid logs on demand.
+              </p>
+            )}
+          </Section>
+
+          {/* Luck index */}
+          <Section
+            title="Luck index"
+            note="Who gets dealt the cards — trump and bowers per hand, reconstructed from the trick log"
+            right={
+              <button
+                onClick={() => setShowLuck((v) => !v)}
+                aria-pressed={showLuck}
+                className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
+              >
+                {showLuck ? 'Collapse' : '🍀 Expand'}
+              </button>
+            }
+          >
+            {showLuck ? (
+              <LuckIndex matches={matches} />
+            ) : (
+              <p className="text-white/45 text-sm">
+                Expand to settle the argument: who actually runs good. Separates card luck from
+                skill using every card ever played. Loads the full trick logs on demand.
+              </p>
             )}
           </Section>
 
@@ -533,85 +647,31 @@ export default function StatsPage() {
           <Section
             title="Recent games"
             right={
-              <button
-                onClick={adminKey ? lockAdmin : unlockAdmin}
-                title={
-                  adminKey
-                    ? 'Admin unlocked — click to lock deleting again'
-                    : 'Enter the admin key to enable deleting games'
-                }
-                className="text-xs text-white/50 hover:text-white/80 border border-white/15 rounded-lg px-2.5 py-1"
-              >
-                {adminKey ? '🔒 Admin ✓' : '🔓 Admin'}
-              </button>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/stats/games"
+                  className="text-xs text-white/60 hover:text-white border border-white/15 rounded-lg px-2.5 py-1"
+                >
+                  View all →
+                </Link>
+                <button
+                  onClick={adminKey ? lockAdmin : unlockAdmin}
+                  title={
+                    adminKey
+                      ? 'Admin unlocked — click to lock deleting again'
+                      : 'Enter the admin key to enable deleting games'
+                  }
+                  className="text-xs text-white/50 hover:text-white/80 border border-white/15 rounded-lg px-2.5 py-1"
+                >
+                  {adminKey ? '🔒 Admin ✓' : '🔓 Admin'}
+                </button>
+              </div>
             }
           >
             <div className="space-y-2">
-              {recent.map((m) => {
-                const ns = m.players.filter((p) => p.team === 'NS').map((p) => p.name);
-                const ew = m.players.filter((p) => p.team === 'EW').map((p) => p.name);
-                const nsWon = m.winnerTeam === 'NS';
-                return (
-                  <div
-                    key={m.id}
-                    className="group bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className={nsWon ? 'text-gold font-medium' : 'text-white/70'}>
-                          {ns.map((n, i) => (
-                            <span key={n}>
-                              {i > 0 && <span className="text-white/40"> &amp; </span>}
-                              <PlayerLink name={n} />
-                            </span>
-                          ))}{' '}
-                          {nsWon && '👑'}
-                        </span>
-                        <span className="text-white/40">vs</span>
-                        <span className={!nsWon ? 'text-gold font-medium' : 'text-white/70'}>
-                          {ew.map((n, i) => (
-                            <span key={n}>
-                              {i > 0 && <span className="text-white/40"> &amp; </span>}
-                              <PlayerLink name={n} />
-                            </span>
-                          ))}{' '}
-                          {!nsWon && '👑'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-white/60 text-xs whitespace-nowrap">
-                          {m.finalScore.NS}–{m.finalScore.EW}
-                        </span>
-                        {adminKey && (
-                          <button
-                            onClick={() => onDelete(m.id)}
-                            aria-label="Delete this game"
-                            title="Delete this game"
-                            className="text-white/30 hover:text-red-300 px-1 sm:opacity-0 sm:group-hover:opacity-100 transition"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-[11px] text-white/40 mt-0.5 flex items-center gap-1.5">
-                      <span>
-                        {formatDate(m.ts)} · {m.handsPlayed} hands
-                      </span>
-                      {m.source === 'manual' && (
-                        <span className="text-[10px] uppercase tracking-wider bg-white/10 border border-white/15 rounded px-1 py-0.5">
-                          ✏️ in person
-                        </span>
-                      )}
-                      {m.source === 'historical' && (
-                        <span className="text-[10px] uppercase tracking-wider bg-white/10 border border-white/15 rounded px-1 py-0.5">
-                          📜 historical
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {recent.map((m) => (
+                <GameRow key={m.id} match={m} onDelete={adminKey ? onDelete : undefined} />
+              ))}
             </div>
           </Section>
 

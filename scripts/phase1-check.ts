@@ -109,11 +109,18 @@ check('Profile(Alice): 2-0, partner Carol 2-0, beats Bob 2x, cum diff 8', () => 
 
 // ── Badges ──
 check('Badges: First Blood held by winners, not losers', () => {
-  const badges = computeBadges(players, elo);
+  const badges = computeBadges(matches, players, elo);
   const firstWin = badges.find((b) => b.id === 'first-win')!;
   assert.ok(firstWin.holders.includes('Alice'));
   assert.ok(firstWin.holders.includes('Carol'));
   assert.ok(!firstWin.holders.includes('Bob'));
+});
+
+check('Badges: First Blood earn date = first winning game', () => {
+  const badges = computeBadges(matches, players, elo);
+  const firstWin = badges.find((b) => b.id === 'first-win')!;
+  const alice = firstWin.earned.find((e) => e.name === 'Alice')!;
+  assert.equal(alice.ts, 1000); // earned in g1
 });
 
 console.log(`\nAll ${passed} Phase-1 analytics checks passed ✅`);

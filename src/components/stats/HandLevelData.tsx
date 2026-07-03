@@ -1,9 +1,8 @@
 'use client';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import type { MatchRecord } from '@/lib/shared-types';
-import type { HandSummary } from '@/server/engine/types';
-import { getSocket } from '@/lib/socket-client';
 import { flattenHands, handsToCSV, cardText, suitSymbol, type HandRow } from '@/lib/stats-hands';
+import { useFullHands } from './useFullHands';
 
 function shortDate(ts: number): string {
   try {
@@ -92,30 +91,8 @@ function HandDetail({ row, loading }: { row: HandRow; loading: boolean }) {
 /** The full hand-level data set: one row per hand, expandable to bids & tricks. */
 export default function HandLevelData({ matches }: { matches: MatchRecord[] }) {
   // The heavy per-hand detail (bids + tricks) is omitted from the default stats
-  // payload. This section only mounts when the user expands it, so fetch the full
-  // detail once here and merge it back into the (already filtered) matches by id.
-  const [fullById, setFullById] = useState<Map<string, HandSummary[]> | null>(null);
-  useEffect(() => {
-    let alive = true;
-    getSocket().emit('stats:hands', (payload) => {
-      if (!alive) return;
-      const map = new Map<string, HandSummary[]>();
-      for (const g of payload.games) map.set(g.id, g.hands);
-      setFullById(map);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-  const loadingDetail = fullById === null;
-
-  const detailed = useMemo(
-    () =>
-      fullById
-        ? matches.map((m) => (fullById.has(m.id) ? { ...m, hands: fullById.get(m.id) } : m))
-        : matches,
-    [matches, fullById]
-  );
+  // payload; it loads on demand when this section mounts.
+  const { detailed, loading: loadingDetail } = useFullHands(matches);
   const rows = useMemo(() => flattenHands(detailed), [detailed]);
   const gameCount = useMemo(() => new Set(rows.map((r) => r.gameId)).size, [rows]);
   const [open, setOpen] = useState<string | null>(null);

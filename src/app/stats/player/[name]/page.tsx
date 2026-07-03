@@ -5,11 +5,13 @@ import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { getSocket } from '@/lib/socket-client';
 import type { MatchRecord, StatsPayload } from '@/lib/shared-types';
-import { computePlayers } from '@/lib/stats-analytics';
+import { computePlayers, nameKey } from '@/lib/stats-analytics';
 import { computeElo } from '@/lib/stats-elo';
 import { computeProfile, computeRadar } from '@/lib/stats-profile';
 import { computeBadges, badgesFor } from '@/lib/stats-achievements';
+import { computeClutch, type ClutchRow } from '@/lib/stats-clutch';
 import { RadarChart, EloLineChart } from '@/components/stats/ProfileCharts';
+import { earnedDateLabel } from '@/components/stats/AchievementsStrip';
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 const one = (n: number) => n.toFixed(1);
@@ -61,10 +63,22 @@ export default function PlayerProfilePage() {
   const elo = useMemo(() => computeElo(allMatches), [allMatches]);
   const radar = useMemo(() => computeRadar(players), [players]);
   const profile = useMemo(() => computeProfile(name, allMatches), [name, allMatches]);
-  const myRow = useMemo(() => players.find((p) => p.name === name) ?? null, [players, name]);
-  const myElo = elo.get(name) ?? null;
-  const myRadar = radar.get(name) ?? null;
-  const myBadges = useMemo(() => badgesFor(name, computeBadges(players, elo)), [players, elo, name]);
+  // Case-insensitive lookup; profile.name carries the canonical casing.
+  const canonical = profile.name;
+  const myRow = useMemo(
+    () => players.find((p) => nameKey(p.name) === nameKey(name)) ?? null,
+    [players, name]
+  );
+  const myElo = elo.get(canonical) ?? null;
+  const myRadar = radar.get(canonical) ?? null;
+  const myBadges = useMemo(
+    () => badgesFor(canonical, computeBadges(allMatches, players, elo)),
+    [allMatches, players, elo, canonical]
+  );
+  const myClutch = useMemo<ClutchRow | null>(
+    () => computeClutch(allMatches).players.find((p) => nameKey(p.name) === nameKey(name)) ?? null,
+    [allMatches, name]
+  );
 
   return (
     <main className="min-h-screen px-3 sm:px-4 py-6 max-w-4xl mx-auto">
@@ -72,7 +86,7 @@ export default function PlayerProfilePage() {
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-[0.3em] text-white/50">Player</div>
           <h1 className="font-display text-3xl sm:text-4xl text-gold tracking-wide leading-tight truncate">
-            {name}
+            {canonical}
           </h1>
         </div>
         <Link
@@ -103,15 +117,22 @@ export default function PlayerProfilePage() {
 
           {myBadges.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-4">
-              {myBadges.map((b) => (
-                <span
-                  key={b.id}
-                  title={b.desc}
-                  className="text-xs bg-black/40 border border-gold/30 rounded-full px-2 py-1"
-                >
-                  {b.emoji} {b.name}
-                </span>
-              ))}
+              {myBadges.map((b) => {
+                const earnedTs =
+                  b.earned.find((e) => nameKey(e.name) === nameKey(canonical))?.ts ?? null;
+                return (
+                  <span
+                    key={b.id}
+                    title={earnedTs ? `${b.desc} — earned ${earnedDateLabel(earnedTs)}` : b.desc}
+                    className="text-xs bg-black/40 border border-gold/30 rounded-full px-2 py-1"
+                  >
+                    {b.emoji} {b.name}
+                    {earnedTs && (
+                      <span className="text-white/40"> · {earnedDateLabel(earnedTs)}</span>
+                    )}
+                  </span>
+                );
+              })}
             </div>
           )}
 
@@ -163,13 +184,58 @@ export default function PlayerProfilePage() {
                         )
                       }
                     />
+                    <Row k="R1 call success" v={myRow.r1CallPct == null ? '—' : pct(myRow.r1CallPct)} />
+                    <Row k="R2 call success" v={myRow.r2CallPct == null ? '—' : pct(myRow.r2CallPct)} />
                     <Row k="Marches" v={myRow.marches} />
                     <Row k="Euchred (set)" v={myRow.euchres} />
                     <Row k="Loners called / made" v={`${myRow.loneCalled} / ${myRow.loneWon}`} />
                     <Row k="Alone make %" v={myRow.aloneMakePct == null ? '—' : pct(myRow.aloneMakePct)} />
                     <Row k="Def. euchre rate" v={myRow.defEuchreRate == null ? '—' : pct(myRow.defEuchreRate)} />
+                    <Row
+                      k="Loners stopped"
+                      v={
+                        myRow.lonersStopped == null
+                          ? '—'
+                          : `${myRow.lonersStopped} of ${myRow.lonersFaced}`
+                      }
+                    />
                     <Row k="Total tricks" v={myRow.tricks} />
                   </dl>
+                ) : (
+                  <p className="text-white/40 text-sm">No data.</p>
+                )}
+              </section>
+              <section className="bg-black/40 border border-white/10 rounded-2xl p-4 lg:col-span-2">
+                <h2 className="text-sm uppercase tracking-wider text-gold font-semibold mb-2">Clutch</h2>
+                {myClutch ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <Kpi
+                      label="Close games"
+                      value={myClutch.closeGames ? `${myClutch.closeWins}-${myClutch.closeLosses}` : '—'}
+                      sub={myClutch.closeGames ? `${pct(myClutch.closeWinPct)} · decided by ≤2` : 'decided by ≤2'}
+                    />
+                    <Kpi
+                      label="Comeback wins"
+                      value={myClutch.comebackWins ?? '—'}
+                      sub="won after trailing by 5+"
+                    />
+                    <Kpi
+                      label="Blown leads"
+                      value={myClutch.blownLeads ?? '—'}
+                      sub="lost after leading by 5+"
+                    />
+                    <Kpi
+                      label="Biggest comeback"
+                      value={myClutch.biggestComeback != null ? `−${myClutch.biggestComeback}` : '—'}
+                      sub={
+                        myClutch.biggestComeback != null
+                          ? 'deficit overcome'
+                          : myClutch.loggedGames > 0
+                            ? 'no 5+ comebacks yet'
+                            : 'needs hand-logged games'
+                      }
+                    />
+                  </div>
                 ) : (
                   <p className="text-white/40 text-sm">No data.</p>
                 )}

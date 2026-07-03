@@ -39,6 +39,8 @@ export type PlayerRow = {
   currentStreak: number;
   longestWinStreak: number;
   longestLossStreak: number;
+  /** Win/loss of the player's last (up to) 5 games, chronological. */
+  recentForm: boolean[];
   lastPlayed: number; // ts of most recent game
   ppgFor: number; // avg points scored per game (0..10)
   ppgAgainst: number; // avg points conceded per game
@@ -52,6 +54,10 @@ export type PlayerRow = {
   netPtsPerCall: number | null; // net points their calls net the team, per call
   defEuchreRate: number | null; // euchres inflicted ÷ hands played on defense
   aloneMakePct: number | null; // loners made ÷ loners called
+  r1CallPct: number | null; // make rate on round-1 order-ups (hand-logged games)
+  r2CallPct: number | null; // make rate on round-2 named calls (hand-logged games)
+  lonersFaced: number | null; // logged hands defending against a loner
+  lonersStopped: number | null; // of those, times the loner was held under 5 tricks
 };
 
 /** A two-human partnership (players who shared a team in a game). */
@@ -82,6 +88,8 @@ export type Superlative = {
   title: string;
   blurb: string;
   player: string | null; // null → not enough data to award
+  /** Multiple winners (e.g. a partnership) — takes precedence over `player`. */
+  players?: string[];
   value: string;
   sub?: string;
 };
@@ -90,11 +98,31 @@ export type Superlative = {
 
 const norm = (name: string) => name.trim();
 
-/** Keep only games where every one of the four seats was a human. */
+/** Case-insensitive identity key — "Dave" and "dave" are the same player. */
+export const nameKey = (name: string) => name.trim().toLowerCase();
+
+/** First-seen display casing for each distinct player (case-insensitive). */
+function canonicalizer(matches: MatchRecord[]): (name: string) => string {
+  const display = new Map<string, string>();
+  for (const m of matches) {
+    for (const p of m.players) {
+      const k = nameKey(p.name);
+      if (k && !display.has(k)) display.set(k, norm(p.name));
+    }
+  }
+  return (name) => display.get(nameKey(name)) ?? norm(name);
+}
+
+/** Keep only games where every one of the four seats was a human. Player names
+ *  are canonicalized case-insensitively (first-seen casing wins) so "Dave" and
+ *  "dave" don't split into two histories. */
 export function humanGames(matches: MatchRecord[]): MatchRecord[] {
-  return matches.filter(
-    (m) => m.players.length === 4 && m.players.every((p) => !p.isBot && norm(p.name).length > 0)
-  );
+  const canon = canonicalizer(matches);
+  return matches
+    .filter(
+      (m) => m.players.length === 4 && m.players.every((p) => !p.isBot && norm(p.name).length > 0)
+    )
+    .map((m) => ({ ...m, players: m.players.map((p) => ({ ...p, name: canon(p.name) })) }));
 }
 
 /** Oldest → newest. Streak math depends on chronological order. */
@@ -134,6 +162,11 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
     | 'netPtsPerCall'
     | 'defEuchreRate'
     | 'aloneMakePct'
+    | 'recentForm'
+    | 'r1CallPct'
+    | 'r2CallPct'
+    | 'lonersFaced'
+    | 'lonersStopped'
   > & {
     results: boolean[];
     pointsFor: number;
@@ -144,8 +177,13 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
     loggedCalls: number; // calls in hand-logged games
     callNet: number; // sum of (maker-team pts − defender-team pts) over their calls
     r1Calls: number; // logged calls that were round-1 order-ups
+    r1Made: number; // of those, calls that weren't euchred
+    r2Calls: number; // logged calls named in round 2
+    r2Made: number;
     defHands: number; // logged hands defended (opponents called)
     defEuchresLogged: number; // euchres inflicted on those defended hands
+    aloneDefHands: number; // logged hands defending against a loner
+    aloneDefStopped: number; // of those, loner held under 5 tricks
   };
   const map = new Map<string, Acc>();
 
@@ -176,8 +214,13 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
         loggedCalls: 0,
         callNet: 0,
         r1Calls: 0,
+        r1Made: 0,
+        r2Calls: 0,
+        r2Made: 0,
         defHands: 0,
         defEuchresLogged: 0,
+        aloneDefHands: 0,
+        aloneDefStopped: 0,
       };
       map.set(name, a);
     }
@@ -228,10 +271,22 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
           if (seat === h.maker) {
             a.loggedCalls += 1;
             a.callNet += net;
-            if (h.bidRound === 1) a.r1Calls += 1;
+            if (h.bidRound === 1) {
+              a.r1Calls += 1;
+              if (!h.euchred) a.r1Made += 1;
+            } else if (h.bidRound === 2) {
+              a.r2Calls += 1;
+              if (!h.euchred) a.r2Made += 1;
+            }
           } else if (teamOf(seat) !== makerTeam) {
             a.defHands += 1;
             if (h.euchred) a.defEuchresLogged += 1;
+            if (h.alone) {
+              a.aloneDefHands += 1;
+              // A "stopped" loner = the lone maker was held under 5 tricks,
+              // denying the 4-point sweep (includes euchring the loner).
+              if (!h.march) a.aloneDefStopped += 1;
+            }
           }
         }
       }
@@ -241,7 +296,9 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
   return Array.from(map.values()).map((a) => {
     const {
       results, pointsFor, pointsAgainst, margins,
-      handsIn, callsForBid, loggedCalls, callNet, r1Calls, defHands, defEuchresLogged,
+      handsIn, callsForBid, loggedCalls, callNet,
+      r1Calls, r1Made, r2Calls, r2Made,
+      defHands, defEuchresLogged, aloneDefHands, aloneDefStopped,
       ...rest
     } = a;
     const g = a.games || 1;
@@ -258,6 +315,11 @@ export function computePlayers(matches: MatchRecord[]): PlayerRow[] {
       netPtsPerCall: loggedCalls ? callNet / loggedCalls : null,
       defEuchreRate: defHands ? defEuchresLogged / defHands : null,
       aloneMakePct: a.loneCalled ? a.loneWon / a.loneCalled : null,
+      r1CallPct: r1Calls ? r1Made / r1Calls : null,
+      r2CallPct: r2Calls ? r2Made / r2Calls : null,
+      lonersFaced: aloneDefHands || null,
+      lonersStopped: aloneDefHands ? aloneDefStopped : null,
+      recentForm: results.slice(-5),
       ...streaks(results),
     };
   });
@@ -494,6 +556,9 @@ export type SortKey = keyof Pick<
   | 'netPtsPerCall'
   | 'defEuchreRate'
   | 'aloneMakePct'
+  | 'r1CallPct'
+  | 'r2CallPct'
+  | 'lonersStopped'
 >;
 
 // ── Filtering ────────────────────────────────────────────────────────────────

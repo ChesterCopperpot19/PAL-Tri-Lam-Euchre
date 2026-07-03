@@ -200,3 +200,153 @@ export function computeCallRanks(matches: MatchRecord[]): {
     .sort((a, b) => b.total - a.total);
   return { byRank, total, players };
 }
+
+// ── Calls by suit ────────────────────────────────────────────────────────────
+// Which trump suits players like to call, and how those calls work out.
+
+export const SUITS: Suit[] = ['S', 'H', 'C', 'D'];
+
+const emptySuits = (): Record<Suit, number> => ({ H: 0, D: 0, C: 0, S: 0 });
+
+export type PlayerSuitRow = {
+  name: string;
+  total: number;
+  counts: Record<Suit, number>; // calls per suit
+  share: Record<Suit, number>; // share of that player's own calls (0..1)
+  made: Record<Suit, number>; // calls per suit that weren't euchred
+  makePct: Record<Suit, number | null>; // made ÷ counts (null when no calls)
+};
+
+/** Club-wide + per-player trump-suit call breakdown. Human games only. */
+export function computeCallSuits(matches: MatchRecord[]): {
+  bySuit: Record<Suit, number>;
+  madeBySuit: Record<Suit, number>;
+  total: number;
+  players: PlayerSuitRow[];
+} {
+  const bySuit = emptySuits();
+  const madeBySuit = emptySuits();
+  const perPlayer = new Map<string, { counts: Record<Suit, number>; made: Record<Suit, number> }>();
+  for (const m of humanGames(matches)) {
+    if (!m.hands || m.hands.length === 0) continue;
+    const seatName: string[] = [];
+    for (const p of m.players) seatName[p.seat] = p.name;
+    for (const h of m.hands) {
+      if (!h.trump) continue;
+      bySuit[h.trump] += 1;
+      if (!h.euchred) madeBySuit[h.trump] += 1;
+      const name = seatName[h.maker] || `Seat ${h.maker}`;
+      let pc = perPlayer.get(name);
+      if (!pc) {
+        pc = { counts: emptySuits(), made: emptySuits() };
+        perPlayer.set(name, pc);
+      }
+      pc.counts[h.trump] += 1;
+      if (!h.euchred) pc.made[h.trump] += 1;
+    }
+  }
+  const total = SUITS.reduce((s, c) => s + bySuit[c], 0);
+  const players: PlayerSuitRow[] = [...perPlayer.entries()]
+    .map(([name, { counts, made }]) => {
+      const t = SUITS.reduce((s, c) => s + counts[c], 0);
+      const share = emptySuits();
+      const makePct: Record<Suit, number | null> = { H: null, D: null, C: null, S: null };
+      for (const c of SUITS) {
+        share[c] = t ? counts[c] / t : 0;
+        makePct[c] = counts[c] ? made[c] / counts[c] : null;
+      }
+      return { name, total: t, counts, share, made, makePct };
+    })
+    .sort((a, b) => b.total - a.total);
+  return { bySuit, madeBySuit, total, players };
+}
+
+// ── Dealer-position analytics ────────────────────────────────────────────────
+// Position 0 = dealer, 1 = left of dealer (eldest hand, bids first), 2 = across
+// (dealer's partner), 3 = right of dealer.
+
+export const POSITION_LABELS = ['Dealer', 'Left', 'Across', 'Right'] as const;
+
+export type DealerPositionRow = {
+  name: string;
+  hands: [number, number, number, number]; // hands seen at each relative position
+  calls: [number, number, number, number]; // trump calls made from that position
+};
+
+export type DealerStats = {
+  /** Hands with a recorded dealer. */
+  handsWithDealer: number;
+  /** Of those, hands where the dealing team took the points. */
+  dealerTeamWon: number;
+  /** Net points for the dealing team, summed over those hands. */
+  dealerTeamNet: number;
+  positions: DealerPositionRow[];
+  /** Stick-the-dealer: hands where all seven other bids passed and the dealer
+   *  was forced to name trump in round 2. Needs the full bid log. */
+  stuck: { count: number; made: number; euchred: number; net: number };
+  /** False until the heavy bid log has loaded (stuck counts read 0 meanwhile). */
+  stuckDetectable: boolean;
+};
+
+/** Dealer advantage + per-player call behavior by seat relative to the dealer. */
+export function computeDealerStats(matches: MatchRecord[]): DealerStats {
+  let handsWithDealer = 0;
+  let dealerTeamWon = 0;
+  let dealerTeamNet = 0;
+  const perPlayer = new Map<string, DealerPositionRow>();
+  const stuck = { count: 0, made: 0, euchred: 0, net: 0 };
+  let sawBids = false;
+
+  for (const m of humanGames(matches)) {
+    if (!m.hands || m.hands.length === 0) continue;
+    const seatName: string[] = [];
+    for (const p of m.players) seatName[p.seat] = p.name;
+    for (const h of m.hands) {
+      if (h.dealer == null) continue;
+      handsWithDealer += 1;
+      const dealerTeam = TEAM_OF[h.dealer];
+      const otherTeam = dealerTeam === 'NS' ? 'EW' : 'NS';
+      const net = (h.pointsAwarded[dealerTeam] ?? 0) - (h.pointsAwarded[otherTeam] ?? 0);
+      if (net > 0) dealerTeamWon += 1;
+      dealerTeamNet += net;
+
+      for (let seat = 0; seat < 4; seat++) {
+        const name = seatName[seat];
+        if (!name) continue;
+        const pos = (seat - h.dealer + 4) % 4;
+        let row = perPlayer.get(name);
+        if (!row) {
+          row = { name, hands: [0, 0, 0, 0], calls: [0, 0, 0, 0] };
+          perPlayer.set(name, row);
+        }
+        row.hands[pos] += 1;
+        if (seat === h.maker) row.calls[pos] += 1;
+      }
+
+      if (h.bids && h.bids.length) {
+        sawBids = true;
+        const nonPass = h.bids.filter((b) => b.action !== 'pass');
+        const isStuck =
+          nonPass.length === 1 &&
+          nonPass[0].seat === h.dealer &&
+          nonPass[0].round === 2 &&
+          h.bids.length - 1 >= 7; // all four passed R1, other three passed R2
+        if (isStuck) {
+          stuck.count += 1;
+          if (h.euchred) stuck.euchred += 1;
+          else stuck.made += 1;
+          const makerTeam = TEAM_OF[h.maker];
+          const defTeam = makerTeam === 'NS' ? 'EW' : 'NS';
+          stuck.net += (h.pointsAwarded[makerTeam] ?? 0) - (h.pointsAwarded[defTeam] ?? 0);
+        }
+      }
+    }
+  }
+
+  const positions = [...perPlayer.values()].sort(
+    (a, b) =>
+      b.hands.reduce((s, n) => s + n, 0) - a.hands.reduce((s, n) => s + n, 0) ||
+      a.name.localeCompare(b.name)
+  );
+  return { handsWithDealer, dealerTeamWon, dealerTeamNet, positions, stuck, stuckDetectable: sawBids };
+}
