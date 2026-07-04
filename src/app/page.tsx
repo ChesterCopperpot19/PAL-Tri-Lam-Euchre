@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDisplayName, usePlayerId } from '@/lib/usePlayerId';
 import { getSocket } from '@/lib/socket-client';
 import PlayerNameSelect from '@/components/PlayerNameSelect';
@@ -26,6 +26,30 @@ export default function LandingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rooms, setRooms] = useState<RoomListEntry[]>([]);
+  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Background video. Speed and loop trimming are baked into the file itself
+  // (24fps source slowed 4x with motion-interpolated frames at 30fps, stray
+  // opening frames cut). Chrome refuses autoplay in hidden tabs and won't
+  // retry on its own, so resume on visibility/focus/click.
+  useEffect(() => {
+    const v = bgVideoRef.current;
+    if (!v) return;
+    const resume = () => {
+      if (v.paused) v.play().catch(() => {});
+    };
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('pageshow', resume);
+    window.addEventListener('focus', resume);
+    document.addEventListener('click', resume);
+    resume();
+    return () => {
+      document.removeEventListener('visibilitychange', resume);
+      window.removeEventListener('pageshow', resume);
+      window.removeEventListener('focus', resume);
+      document.removeEventListener('click', resume);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -86,7 +110,20 @@ export default function LandingPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-10 gap-6">
+    <>
+      <video
+        ref={bgVideoRef}
+        className="bg-video"
+        src="/bg.mp4"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        aria-hidden
+      />
+      <div className="bg-scrim" />
+      <main className="min-h-screen flex flex-col items-center justify-center px-4 py-10 gap-6">
       <div className="w-full max-w-md bg-black/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur shadow-2xl">
         <div className="text-[11px] uppercase tracking-[0.35em] text-white/50">
           Welcome to the
@@ -223,6 +260,7 @@ export default function LandingPage() {
           </div>
         </div>
       )}
-    </main>
+      </main>
+    </>
   );
 }
