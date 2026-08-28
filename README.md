@@ -44,7 +44,7 @@ npm start
 ## How a game flows
 
 1. **Lobby** — first player creates a room and shares the 4-letter code. Up to 4 players + unlimited spectators. Host clicks **Start** when 4 are seated.
-2. **Bidding round 1** — going clockwise from dealer's left, each player can *Order it up* (trump = upcard suit) or *Pass*. If ordered, the dealer takes up the upcard and discards one.
+2. **Bidding round 1** — going clockwise from dealer's left, each player can *Order it up* (trump = upcard suit) or *Pass*. If ordered, the dealer takes up the upcard and discards one. (Exception: if the order-up is a loner and the dealer is the caller's partner, the dealer sits out and plays no card, so the discard is skipped and the upcard is simply buried.)
 3. **Bidding round 2** — if all passed, each player can call any other suit. The dealer **must** call (stick-the-dealer).
 4. **Play** — five tricks; you must follow the led suit if you can (the left bower follows trump). Highest trump (or highest of led suit) wins each trick. After each trick, winner leads the next.
 5. **Score** — 1 for 3–4 tricks, 2 for a march, 4 for a lone march. Defenders get 2 if makers are euchred.

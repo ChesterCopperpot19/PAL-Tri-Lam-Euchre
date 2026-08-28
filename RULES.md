@@ -14,6 +14,7 @@ Cross-checked against Hoyle's, the Bicycle "Official Rules of Card Games", and t
 | 8 | **Left bower**: J of same color as trump, second-highest trump. Treated as part of trump suit for follow-suit and trick-winning | `isLeftBower()`, `effectiveSuit()` | ✅ Standard |
 | 9 | **Trump rank order**: Right bower > Left bower > A > K > Q > 10 > 9 (of trump) | `cardStrength()` | ✅ Standard |
 | 10 | **Going alone**: maker may declare alone; partner sits out for the hand | `alone` flag, `sittingOut[]` | ✅ Standard. Allowed in both round 1 (with order-up) and round 2 (with call) |
+| 10a | **Loner across from the dealer**: if the alone caller's partner is the dealer, the dealer's discard is skipped and the upcard is buried | `dealerSitsOut` in `BID_ORDER` ([game.ts](src/server/engine/game.ts)) | ⚠️ House rule (mechanical). That dealer plays no card, so the discard changes nothing — we skip the dead prompt rather than stall the table. Some rule sets have the dealer pick up and discard anyway; outcome is identical |
 | 11 | **Lone hand wins all 5**: 4 points | `pointsAwarded[makers] = 4` when `march && alone` | ✅ Standard |
 | 12 | **Lone hand wins 3 or 4**: 1 point (no bonus over a regular partial win) | `pointsAwarded[makers] = 1` | ✅ Standard |
 | 13 | **Standard march** (5 tricks, not alone): 2 points | `pointsAwarded[makers] = 2` when `march && !alone` | ✅ Standard |
@@ -33,6 +34,7 @@ Cross-checked against Hoyle's, the Bicycle "Official Rules of Card Games", and t
 - **Stick the dealer** is on. (Common in casual Euchre, prevents dead hands.)
 - **Game to 10 points**, not 7.
 - **Euchring a lone caller** awards the standard 2 points to defenders, not the variant 4.
+- **A sitting-out dealer doesn't discard.** When the loner is the dealer's partner, the upcard is buried and play begins immediately (rule 10a).
 
 ## What's intentionally NOT implemented
 

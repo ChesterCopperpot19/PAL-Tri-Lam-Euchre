@@ -2,13 +2,12 @@
 import type { RedactedState } from '@/server/engine/redact';
 import type { RoomMember } from '@/lib/shared-types';
 import type { Card, Suit } from '@/server/engine/types';
-
-const SUIT_GLYPH: Record<Suit, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
-const RED = new Set<Suit>(['H', 'D']);
+import { SUIT_COLOR_ON_DARK, SUIT_GLYPH } from '@/lib/suits';
+import SuitedText from './SuitedText';
 
 function Sym({ s }: { s: Suit | null | undefined }) {
   if (!s) return <span className="text-white/30">—</span>;
-  return <span className={RED.has(s) ? 'text-red-400' : 'text-white/90'}>{SUIT_GLYPH[s]}</span>;
+  return <span style={{ color: SUIT_COLOR_ON_DARK[s] }}>{SUIT_GLYPH[s]}</span>;
 }
 const cardText = (c: Card) => `${c.rank}${SUIT_GLYPH[c.suit]}`;
 
@@ -46,7 +45,7 @@ export default function Scorecard({ state, members }: { state: RedactedState; me
                 {t.plays.map((p, pi) => (
                   <span key={pi} className={t.winner === p.seat ? 'text-gold font-medium' : ''}>
                     {pi > 0 && <span className="text-white/30">, </span>}
-                    {name(p.seat)} {cardText(p.card)}
+                    {name(p.seat)} <SuitedText text={cardText(p.card)} />
                     {t.winner === p.seat ? ' ✓' : ''}
                   </span>
                 ))}

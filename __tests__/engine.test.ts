@@ -366,4 +366,36 @@ describe('engine: dealer-discard flow', () => {
     expect(r2.state.phase).toBe('PLAYING');
     expect(r2.state.hands[0].length).toBe(5);
   });
+
+  it('skips the discard when the alone caller sits the dealer out', () => {
+    let s = createGame();
+    s = dealHand({ ...s, dealer: 0 });
+    const upcard = s.upcard!;
+    const dealerHand = s.hands[0];
+    // seat 2 is dealer 0's partner — ordering up alone sits the DEALER out, so the
+    // dealer never plays a card and the mandatory discard would decide nothing.
+    const r = applyAction({ ...s, turn: 2 }, { type: 'BID_ORDER', seat: 2, alone: true });
+    expect(r.state.phase).toBe('PLAYING');
+    expect(r.state.sittingOut).toContain(0);
+    expect(r.state.turn).toBe(1); // lead passes to the dealer's left
+    expect(r.state.sittingOut).not.toContain(r.state.turn);
+    // Upcard is buried: the dealer keeps their dealt five, untouched.
+    expect(r.state.hands[0]).toEqual(dealerHand);
+    expect(r.state.hands[0].find((c) => c.id === upcard.id)).toBeFalsy();
+    // Still an order-up as far as scoring/stats are concerned.
+    expect(r.state.upcardTaken).toBe(true);
+    expect(r.state.trump).toBe(upcard.suit);
+  });
+
+  it('still requires the discard when the alone caller is not the dealer partner', () => {
+    let s = createGame();
+    s = dealHand({ ...s, dealer: 0 });
+    // seat 1 is an opponent of the dealer — dealer plays on, so the discard stands.
+    const r = applyAction({ ...s, turn: 1 }, { type: 'BID_ORDER', seat: 1, alone: true });
+    expect(r.state.phase).toBe('DEALER_DISCARD');
+    expect(r.state.turn).toBe(0);
+    expect(r.state.sittingOut).toContain(3); // seat 1's partner sits out
+    expect(r.state.sittingOut).not.toContain(0);
+    expect(r.state.hands[0].length).toBe(6);
+  });
 });

@@ -3,6 +3,7 @@ import { Fragment, useMemo, useState } from 'react';
 import type { MatchRecord } from '@/lib/shared-types';
 import { flattenHands, handsToCSV, cardText, suitSymbol, type HandRow } from '@/lib/stats-hands';
 import { useFullHands } from './useFullHands';
+import SuitedText from '../SuitedText';
 
 function shortDate(ts: number): string {
   try {
@@ -10,13 +11,6 @@ function shortDate(ts: number): string {
   } catch {
     return '';
   }
-}
-
-/** Render a card/suit string, red for ♥/♦. */
-function Suited({ text }: { text: string }) {
-  if (!text) return <span className="text-white/30">—</span>;
-  const red = text.includes('♥') || text.includes('♦');
-  return <span className={red ? 'text-red-400' : 'text-white/90'}>{text}</span>;
 }
 
 function ResultBadge({ result }: { result: string }) {
@@ -55,7 +49,7 @@ function HandDetail({ row, loading }: { row: HandRow; loading: boolean }) {
                 <span className="text-white/50">pass</span>
               ) : (
                 <>
-                  {b.action} <Suited text={suitSymbol(b.suit)} />
+                  {b.action} <SuitedText text={suitSymbol(b.suit)} />
                   {b.alone ? ' alone' : ''}
                 </>
               )}
@@ -71,12 +65,12 @@ function HandDetail({ row, loading }: { row: HandRow; loading: boolean }) {
           row.tricks.map((t, i) => (
             <div key={i} className="text-white/80">
               <span className="text-white/40">T{i + 1}</span>{' '}
-              <span className="text-white/40">led <Suited text={suitSymbol(t.ledSuit)} /></span>
+              <span className="text-white/40">led <SuitedText text={suitSymbol(t.ledSuit)} /></span>
               {' — '}
               {t.plays.map((p, j) => (
                 <span key={j} className={t.winner === p.seat ? 'text-gold font-medium' : ''}>
                   {j > 0 && <span className="text-white/30">, </span>}
-                  {row.seatNames[p.seat] || `Seat ${p.seat}`} <Suited text={cardText(p.card)} />
+                  {row.seatNames[p.seat] || `Seat ${p.seat}`} <SuitedText text={cardText(p.card)} />
                   {t.winner === p.seat ? ' ✓' : ''}
                 </span>
               ))}
@@ -163,8 +157,8 @@ export default function HandLevelData({ matches }: { matches: MatchRecord[] }) {
                     <td className="py-1.5 px-1.5 text-right tabular-nums text-white/60">{r.handNo}</td>
                     <td className="py-1.5 px-1.5 whitespace-nowrap">{r.dealer || '—'}</td>
                     <td className="py-1.5 px-1.5 font-medium whitespace-nowrap">{r.maker}</td>
-                    <td className="py-1.5 px-1.5 text-center"><Suited text={suitSymbol(r.trump)} /></td>
-                    <td className="py-1.5 px-1.5 text-center"><Suited text={r.upcard} /></td>
+                    <td className="py-1.5 px-1.5 text-center"><SuitedText text={suitSymbol(r.trump)} /></td>
+                    <td className="py-1.5 px-1.5 text-center"><SuitedText text={r.upcard} /></td>
                     <td
                       className="py-1.5 px-1.5 text-center text-white/70"
                       title={r.bidRound === 1 ? 'Ordered up (round 1)' : r.bidRound === 2 ? 'Named suit (round 2)' : ''}

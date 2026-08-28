@@ -167,6 +167,10 @@ export default function RoomPage() {
       socket.off('connect', onConnect);
       document.removeEventListener('visibilitychange', onVisibility);
       if (lonerTimerRef.current) clearTimeout(lonerTimerRef.current);
+      // Release the guard, or a re-run of this effect tears the listeners down and
+      // then bails at the `joinedRef` check without re-adding them — leaving the
+      // client deaf to room:snapshot and its lobby frozen at the join-time seats.
+      joinedRef.current = false;
     };
   }, [code, playerId, name, role]);
 

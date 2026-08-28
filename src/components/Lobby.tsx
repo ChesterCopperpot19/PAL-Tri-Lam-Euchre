@@ -29,6 +29,15 @@ export default function Lobby({
   const [confirmLeave, setConfirmLeave] = useState(false);
   const isHost = snapshot.hostPlayerId === myId;
   const meSeat = snapshot.members.find((m) => m.playerId === myId)?.seat ?? null;
+  // Any seated player can start once the table is full — not just the host.
+  const seatedCount = snapshot.members.filter((m) => m.seat !== null).length;
+  const canStart = meSeat !== null && snapshot.full;
+  const startBlockedReason =
+    meSeat === null
+      ? 'Spectating — a seated player starts the game'
+      : !snapshot.full
+        ? `Waiting for players (${4 - seatedCount} more)`
+        : '';
 
   function seatMember(i: 0 | 1 | 2 | 3): RoomMember | undefined {
     return snapshot.members.find((m) => m.seat === i);
@@ -128,6 +137,16 @@ export default function Lobby({
                       </span>
                       {m.name}
                       {isMe && <span className="text-gold text-xs ml-1">(you)</span>}
+                      {/* Name the host: they still gate the bot / seat-spectator
+                          controls, so a silent host is a confusing host. */}
+                      {m.playerId === snapshot.hostPlayerId && (
+                        <span
+                          className="text-white/55 text-xs ml-1"
+                          title="The host can add or remove bots and seat spectators"
+                        >
+                          (host)
+                        </span>
+                      )}
                     </>
                   ) : (
                     <span className="text-white/40 italic">empty</span>
@@ -212,11 +231,13 @@ export default function Lobby({
       <div className="flex justify-center">
         <button
           onClick={onStart}
-          disabled={!isHost || !snapshot.full}
+          disabled={!canStart}
           className="bg-gold text-black font-semibold rounded-lg px-6 py-3 hover:brightness-110 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          title={!isHost ? 'Host only' : !snapshot.full ? 'Need 4 seated players' : ''}
+          title={startBlockedReason}
         >
-          {snapshot.full ? 'Start Game' : `Waiting for players (${4 - snapshot.members.filter((m) => m.seat !== null).length} more)`}
+          {/* Say why the button is dead in the label itself. It used to explain
+              itself only through `title`, which never shows up on touch. */}
+          {canStart ? 'Start Game' : startBlockedReason}
         </button>
       </div>
     </div>

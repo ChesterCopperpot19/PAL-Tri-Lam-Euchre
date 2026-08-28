@@ -1,22 +1,14 @@
 'use client';
 import { useState } from 'react';
 import type { Card as CardT, Rank, Suit } from '@/server/engine/types';
+import {
+  SUIT_COLOR_ON_DARK,
+  SUIT_COLOR_ON_LIGHT,
+  SUIT_GLYPH,
+  SUIT_NAME,
+} from '@/lib/suits';
 
 const NUM_BACKS = 5;
-
-const SUIT_GLYPH: Record<Suit, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
-const SUIT_COLOR: Record<Suit, string> = {
-  H: '#c0202c',
-  D: '#c0202c',
-  C: '#1a1a1a',
-  S: '#1a1a1a',
-};
-const SUIT_NAME: Record<Suit, string> = {
-  H: 'Hearts',
-  D: 'Diamonds',
-  C: 'Clubs',
-  S: 'Spades',
-};
 const RANK_NAME: Record<Rank, string> = {
   '9': 'Nine',
   '10': 'Ten',
@@ -49,7 +41,7 @@ export function CardFace({
   onClick?: () => void;
   size?: 'sm' | 'md' | 'lg';
 }) {
-  const color = SUIT_COLOR[card.suit];
+  const color = SUIT_COLOR_ON_LIGHT[card.suit];
   const glyph = SUIT_GLYPH[card.suit];
 
   // Rank in the corners; a large suit symbol fills the center so the suit is
@@ -144,14 +136,15 @@ export function SuitGlyph({
 }: {
   suit: Suit;
   size?: number;
-  /** Override the default red/black suit color (e.g. force gold for the trump pill). */
+  /** Override the default suit color (e.g. force gold for the trump pill). */
   color?: string;
 }) {
   return (
     <span
       role="img"
       aria-label={SUIT_NAME[suit]}
-      style={{ color: color ?? SUIT_COLOR[suit], fontSize: size, lineHeight: 1 }}
+      // Standalone glyphs always render on the dark navy chrome, never on card stock.
+      style={{ color: color ?? SUIT_COLOR_ON_DARK[suit], fontSize: size, lineHeight: 1 }}
     >
       {SUIT_GLYPH[suit]}
     </span>

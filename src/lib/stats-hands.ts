@@ -4,8 +4,8 @@
 import type { MatchRecord } from './shared-types';
 import type { BidEntry, HandSummary, Suit, Trick } from '@/server/engine/types';
 import { humanGames } from './stats-analytics';
+import { SUIT_GLYPH as SUIT_SYMBOL } from './suits';
 
-const SUIT_SYMBOL: Record<Suit, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
 const TEAM_OF: Record<number, 'NS' | 'EW'> = { 0: 'NS', 2: 'NS', 1: 'EW', 3: 'EW' };
 
 export function suitSymbol(s: Suit | null | undefined): string {

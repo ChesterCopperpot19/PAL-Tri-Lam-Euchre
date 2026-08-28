@@ -2,7 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { applyAction, createGame } from './engine/game';
 import { chooseBotAction } from './engine/bot';
 import { redactState } from './engine/redact';
-import { roomManager, Room } from './rooms';
+import { roomManager, nextHostPlayerId, Room } from './rooms';
 import {
   ClientToServerEvents,
   MatchRecord,
@@ -239,9 +239,9 @@ function scheduleBotTick(io: IO, room: Room) {
   const turnSeat = room.state.turn;
   const seated = room.seats[turnSeat];
   if (!seated || !seated.isBot) return;
-  // Sitting-out seats are only skipped during play (turn-advance already avoids
-  // landing on them). A sitting-out DEALER must still discard, or the hand freezes.
-  if (phase === 'PLAYING' && room.state.sittingOut.includes(turnSeat as 0 | 1 | 2 | 3)) return;
+  // Never act for a sitting-out seat. The engine no longer parks the turn on one:
+  // a sitting-out dealer's discard is resolved at order-up time (see BID_ORDER).
+  if (room.state.sittingOut.includes(turnSeat as 0 | 1 | 2 | 3)) return;
 
   // Detect: did a trick just complete? (completedTricks grew since last call.)
   const prevCount = room.lastTrickCount;
@@ -283,8 +283,8 @@ function scheduleHumanTurnTimer(io: IO, room: Room) {
   const turnSeat = room.state.turn;
   const seated = room.seats[turnSeat];
   if (!seated || seated.isBot) return; // bots are handled by scheduleBotTick
-  // Only skip sitting-out seats during play — a sitting-out dealer must discard.
-  if (room.state.phase === 'PLAYING' && room.state.sittingOut.includes(turnSeat)) return;
+  // Never auto-play for a sitting-out seat; the turn never lands on one.
+  if (room.state.sittingOut.includes(turnSeat)) return;
   if (seated.socketId) return; // connected human → unlimited time, no auto-play
 
   room.turnTimer = setTimeout(() => {
@@ -512,11 +512,17 @@ export function attachHandlers(io: IO) {
                 disconnectedAt: null,
                 isBot: false,
               };
-              if (!room.seats.some((s) => s && s.playerId === room.hostPlayerId)) {
-                room.hostPlayerId = playerId;
-              }
             }
           }
+        }
+
+        // Repair a lost host: if whoever is on record no longer holds a seat, hand
+        // it to a seated human. Only fires when the recorded host is unseated, so it
+        // never steals from a seated host — and it rescues rooms whose hostPlayerId
+        // was emptied when the last host left, which left nobody able to add bots.
+        if (!room.seats.some((s) => s && !s.isBot && s.playerId === room.hostPlayerId)) {
+          const repaired = nextHostPlayerId(room);
+          if (repaired) room.hostPlayerId = repaired;
         }
 
         sessions.set(socket.id, {
@@ -539,10 +545,11 @@ export function attachHandlers(io: IO) {
     });
 
     socket.on('room:start', () => {
-      const ctx = getSessionRoom(socket);
-      if (!ctx) return err(socket, 'not in a room');
-      const { room, sess } = ctx;
-      if (room.hostPlayerId !== sess.playerId) return err(socket, 'host only');
+      // Any seated player can start once the table is full — host-gating this just
+      // stranded tables whose host had drifted to someone else (or to nobody).
+      const ctx = getSeatedSession(socket);
+      if (!ctx) return err(socket, 'only seated players can start');
+      const { room } = ctx;
       if (!room.seats.every((s) => !!s)) return err(socket, 'need 4 players');
       if (room.state.phase !== 'LOBBY') return err(socket, 'already started');
       try {
@@ -832,10 +839,7 @@ export function attachHandlers(io: IO) {
         room.spectators = room.spectators.filter((sp) => sp.playerId !== sess.playerId);
         // Hand off host to a remaining human if needed.
         if (room.hostPlayerId === sess.playerId) {
-          room.hostPlayerId =
-            room.seats.find((s) => s && !s.isBot)?.playerId ??
-            room.spectators[0]?.playerId ??
-            '';
+          room.hostPlayerId = nextHostPlayerId(room);
         }
         // A room with only bots (or nobody) left should not linger on the
         // home page — delete it so it stops showing as "in progress".

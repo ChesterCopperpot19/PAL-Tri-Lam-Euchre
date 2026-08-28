@@ -183,22 +183,32 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
       if (!state.upcard) throw new Error('no upcard');
       // Lone caller sits partner out.
       const trump = state.upcard.suit;
+      // When the loner's partner IS the dealer, that dealer never plays a card this
+      // hand, so the mandatory discard decides nothing. Bury the upcard instead of
+      // stalling the table on a meaningless prompt. `upcardTaken` still flips to
+      // true — scoreHand reads it for `orderedUp` / `bidRound`.
+      const dealerSitsOut = action.alone && PARTNER[action.seat] === state.dealer;
       let s: GameState = {
         ...state,
         trump,
         maker: action.seat,
         alone: action.alone,
         bidLog: [...state.bidLog, { seat: action.seat, action: 'order', round: 1, suit: trump, alone: action.alone }],
-        phase: 'DEALER_DISCARD',
-        // Add upcard to dealer's hand; dealer will discard one.
-        hands: {
-          ...state.hands,
-          [state.dealer]: [...state.hands[state.dealer], state.upcard],
-        },
+        phase: dealerSitsOut ? 'PLAYING' : 'DEALER_DISCARD',
+        // Add upcard to dealer's hand; dealer will discard one. A sitting-out dealer
+        // keeps their original five and the upcard is simply buried.
+        hands: dealerSitsOut
+          ? state.hands
+          : {
+              ...state.hands,
+              [state.dealer]: [...state.hands[state.dealer], state.upcard],
+            },
         upcardTaken: true,
         turn: state.dealer,
       };
       s = setSittingOut(s);
+      // Mirror the DEALER_DISCARD -> PLAYING hand-off: lead passes to the dealer's left.
+      if (dealerSitsOut) s = { ...s, turn: advanceTurn(s, state.dealer) };
       events.push(`bid_order:${action.seat}:${trump}${action.alone ? ':alone' : ''}`);
       return { state: s, events };
     }

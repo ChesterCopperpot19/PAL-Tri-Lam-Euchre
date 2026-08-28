@@ -76,7 +76,7 @@ export type HandSummary = {
 
 export type GameState = {
   phase: Phase;
-  /** Hands by seat. Always all 4 entries; sittingOut player still has a (now empty) hand. */
+  /** Hands by seat. Always all 4 entries; a sittingOut player keeps their dealt cards, unplayed. */
   hands: Record<SeatIndex, Card[]>;
   /** Cards in the kitty (not in any hand or upcard). */
   kitty: Card[];

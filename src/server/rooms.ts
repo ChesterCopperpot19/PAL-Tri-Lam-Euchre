@@ -62,6 +62,20 @@ function stripControlChars(s: string): string {
   return out;
 }
 
+/**
+ * Pick the next host: a connected seated human first, then a disconnected seated
+ * human (they may still be inside their grace window), then a spectator. Falling
+ * straight to a disconnected seat used to strand the room's host-only controls.
+ */
+export function nextHostPlayerId(room: Room): string {
+  return (
+    room.seats.find((s) => s && !s.isBot && s.socketId)?.playerId ??
+    room.seats.find((s) => s && !s.isBot)?.playerId ??
+    room.spectators[0]?.playerId ??
+    ''
+  );
+}
+
 export class RoomManager {
   private rooms = new Map<string, Room>();
 
@@ -176,11 +190,7 @@ export class RoomManager {
               // In the lobby, free the seat outright after grace.
               room.seats[i] = null;
               if (room.hostPlayerId === seat.playerId) {
-                const next =
-                  room.seats.find((s) => s && !s.isBot)?.playerId ??
-                  room.spectators[0]?.playerId ??
-                  '';
-                room.hostPlayerId = next;
+                room.hostPlayerId = nextHostPlayerId(room);
               }
               onChange(room);
               // Bots alone don't keep a room alive — delete it if nobody's left.

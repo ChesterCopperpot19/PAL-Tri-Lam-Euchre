@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { SuitGlyph } from './Card';
+import { ALL_SUITS } from '@/server/engine/types';
+import { SUIT_NAME } from '@/lib/suits';
 import type { Suit } from '@/server/engine/types';
 import type { RedactedState } from '@/server/engine/redact';
 
@@ -61,7 +63,7 @@ export default function BiddingPanel({
               className="px-3 py-1.5 rounded-lg bg-pitt-blueDk hover:bg-[#22306e] text-sm font-medium"
             >
               {isDealer ? 'Pick it up' : `Have ${dealerName} pick it up`}{' '}
-              <SuitGlyph suit={state.upcard.suit} size={16} />
+              <SuitGlyph suit={state.upcard.suit} size={20} />
             </button>
             <button
               onClick={onPass}
@@ -80,21 +82,24 @@ export default function BiddingPanel({
 
       {state.phase === 'BIDDING_2' && state.upcard && (
         <div className="flex flex-wrap gap-2">
-          {(['H', 'D', 'C', 'S'] as Suit[]).map((s) => {
+          {ALL_SUITS.map((s) => {
             const disabled = s === state.upcard!.suit;
             return (
               <button
                 key={s}
                 onClick={() => onCall(s, alone)}
                 disabled={disabled}
+                aria-label={SUIT_NAME[s]}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
                   disabled
-                    ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                    ? 'bg-white/5 cursor-not-allowed'
                     : 'bg-pitt-blueDk hover:bg-[#22306e]'
                 }`}
                 title={disabled ? 'Cannot call the upcard suit in round 2' : ''}
               >
-                <SuitGlyph suit={s} size={16} />
+                {/* SuitGlyph sets an inline color, so a `text-*` class can't dim the
+                    disabled suit — the muted color has to be passed explicitly. */}
+                <SuitGlyph suit={s} size={20} color={disabled ? 'rgba(255,255,255,0.28)' : undefined} />
               </button>
             );
           })}

@@ -3,18 +3,13 @@ import { useEffect, useState } from 'react';
 import type { Suit } from '@/server/engine/types';
 import type { RoomMember } from '@/lib/shared-types';
 import type { RedactedState } from '@/server/engine/redact';
+import { SUIT_GLYPH, SUIT_NAME } from '@/lib/suits';
 
-const SUIT_NAME: Record<Suit, string> = {
-  H: 'Hearts',
-  D: 'Diamonds',
-  C: 'Clubs',
-  S: 'Spades',
-};
-const SUIT_GLYPH: Record<Suit, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
+// Four-color deck: each suit gets its own banner tint so ♠ and ♣ never read alike.
 const SUIT_TINT: Record<Suit, { fg: string; bg: string; border: string }> = {
   H: { fg: '#fff', bg: 'linear-gradient(90deg,#7a0e1a 0%,#b21e2c 50%,#7a0e1a 100%)', border: '#ffd6dc' },
-  D: { fg: '#fff', bg: 'linear-gradient(90deg,#7a0e1a 0%,#b21e2c 50%,#7a0e1a 100%)', border: '#ffd6dc' },
-  C: { fg: '#fff', bg: 'linear-gradient(90deg,#0a0a0a 0%,#2c2c2c 50%,#0a0a0a 100%)', border: '#cfcfcf' },
+  D: { fg: '#fff', bg: 'linear-gradient(90deg,#7a3c05 0%,#c2610a 50%,#7a3c05 100%)', border: '#ffdcb8' },
+  C: { fg: '#fff', bg: 'linear-gradient(90deg,#0a3d1f 0%,#177a3c 50%,#0a3d1f 100%)', border: '#b9edcb' },
   S: { fg: '#fff', bg: 'linear-gradient(90deg,#0a0a0a 0%,#2c2c2c 50%,#0a0a0a 100%)', border: '#cfcfcf' },
 };
 

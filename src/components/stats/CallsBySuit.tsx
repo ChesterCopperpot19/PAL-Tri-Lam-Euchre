@@ -15,18 +15,16 @@ import {
 } from 'chart.js';
 import type { MatchRecord } from '@/lib/shared-types';
 import { computeCallSuits, suitSymbol, SUITS } from '@/lib/stats-hands';
+import { SUIT_COLOR_ON_DARK } from '@/lib/suits';
 import PlayerLink from './PlayerLink';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
-const GOLD = '#FFB81C';
 const TICK = 'rgba(255,255,255,0.72)';
 const GRID = 'rgba(255,255,255,0.08)';
 
-const RED_SUITS = new Set(['H', 'D']);
-
 function SuitHeader({ s }: { s: (typeof SUITS)[number] }) {
-  return <span className={RED_SUITS.has(s) ? 'text-red-400' : 'text-white/90'}>{suitSymbol(s)}</span>;
+  return <span style={{ color: SUIT_COLOR_ON_DARK[s] }}>{suitSymbol(s)}</span>;
 }
 
 export default function CallsBySuit({ matches }: { matches: MatchRecord[] }) {
@@ -46,7 +44,8 @@ export default function CallsBySuit({ matches }: { matches: MatchRecord[] }) {
       {
         label: 'Share of calls',
         data: SUITS.map((s) => (total ? Math.round((bySuit[s] / total) * 100) : 0)),
-        backgroundColor: SUITS.map((s) => (RED_SUITS.has(s) ? '#f87171' : GOLD)),
+        // Four-color deck: each bar carries its own suit color.
+        backgroundColor: SUITS.map((s) => SUIT_COLOR_ON_DARK[s]),
         borderRadius: 4,
         maxBarThickness: 52,
       },

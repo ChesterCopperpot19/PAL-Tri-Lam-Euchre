@@ -408,7 +408,7 @@ export default function Table({
               myHand.every((c) => c.rank === '9' || c.rank === '10') && (
                 <FarmerPanel onRedeal={handlers.onFarmersRedeal} />
               )}
-            {!isSpectator && state.phase === 'DEALER_DISCARD' && meIsDealer && (
+            {!isSpectator && state.phase === 'DEALER_DISCARD' && meIsDealer && !viewerSittingOut && (
               <DiscardPanel
                 hand={myHand}
                 upcardId={state.upcard?.id ?? null}
