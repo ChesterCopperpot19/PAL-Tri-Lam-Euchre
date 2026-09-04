@@ -4,16 +4,15 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { getSocket } from '@/lib/socket-client';
 import type { MatchRecord, StatsPayload } from '@/lib/shared-types';
-import { computePlayers, type PlayerRow } from '@/lib/stats-analytics';
-import { computeElo } from '@/lib/stats-elo';
+import { computePlayers, prepareGames } from '@/lib/stats-analytics';
+import { computeElo, type EloResult } from '@/lib/stats-elo';
+import { one, pct } from '@/lib/stats-format';
 import { computeRadar, type RadarAxes } from '@/lib/stats-profile';
 import { RadarCompare } from '@/components/stats/ProfileCharts';
 import PlayerLink from '@/components/stats/PlayerLink';
 
 const LEAGUE = '__league__';
 const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
-const pct = (n: number) => `${Math.round(n * 100)}%`;
-const one = (n: number) => n.toFixed(1);
 
 type Entity = {
   label: string;
@@ -40,6 +39,75 @@ const ROWS: { key: keyof Entity; label: string; fmt: (n: number) => string; high
   { key: 'loneWon', label: 'Loners made', fmt: (n) => `${Math.round(n)}`, higherBetter: true },
 ];
 
+/** Player picker — module-scoped so React keeps the same component identity
+ *  across renders (an inline component would remount the <select> every time). */
+function Select({
+  value,
+  onChange,
+  names,
+  allowLeague,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  names: string[];
+  allowLeague: boolean;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-2.5 outline-none focus:border-gold text-white"
+    >
+      {allowLeague && <option value={LEAGUE}>🏆 League average</option>}
+      {names.map((n) => (
+        <option key={n} value={n}>
+          {n}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** The comparison row for one selection: a named player, or the league average. */
+function buildEntity(
+  sel: string,
+  players: ReturnType<typeof computePlayers>,
+  elo: Map<string, EloResult>,
+  radar: ReturnType<typeof computeRadar>,
+  leagueRadar: RadarAxes
+): Entity | null {
+  if (sel === LEAGUE) {
+    return {
+      label: 'League avg',
+      rating: mean(players.map((p) => elo.get(p.name)?.rating ?? 1500)),
+      games: mean(players.map((p) => p.games)),
+      winPct: mean(players.map((p) => p.winPct)),
+      ppgFor: mean(players.map((p) => p.ppgFor)),
+      pointDiff: mean(players.map((p) => p.pointDiff)),
+      callPct: mean(players.map((p) => p.callPct)),
+      marches: mean(players.map((p) => p.marches)),
+      loneWon: mean(players.map((p) => p.loneWon)),
+      currentStreak: 0,
+      radar: leagueRadar,
+    };
+  }
+  const p = players.find((pl) => pl.name === sel);
+  if (!p) return null;
+  return {
+    label: p.name,
+    rating: elo.get(p.name)?.rating ?? 1500,
+    games: p.games,
+    winPct: p.winPct,
+    ppgFor: p.ppgFor,
+    pointDiff: p.pointDiff,
+    callPct: p.callPct,
+    marches: p.marches,
+    loneWon: p.loneWon,
+    currentStreak: p.currentStreak,
+    radar: radar.get(p.name)?.scaled ?? leagueRadar,
+  };
+}
+
 export default function ComparePage() {
   const [data, setData] = useState<StatsPayload | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -63,8 +131,9 @@ export default function ComparePage() {
   }, []);
 
   const allMatches = useMemo<MatchRecord[]>(() => data?.matches ?? [], [data]);
-  const players = useMemo(() => computePlayers(allMatches), [allMatches]);
-  const elo = useMemo(() => computeElo(allMatches), [allMatches]);
+  const human = useMemo(() => prepareGames(allMatches), [allMatches]);
+  const players = useMemo(() => computePlayers(human), [human]);
+  const elo = useMemo(() => computeElo(human), [human]);
   const radar = useMemo(() => computeRadar(players), [players]);
   const names = useMemo(() => players.map((p) => p.name).sort((x, y) => x.localeCompare(y)), [players]);
 
@@ -84,56 +153,8 @@ export default function ComparePage() {
     };
   }, [radar]);
 
-  const entity = (sel: string): Entity | null => {
-    if (sel === LEAGUE) {
-      return {
-        label: 'League avg',
-        rating: mean(players.map((p) => elo.get(p.name)?.rating ?? 1500)),
-        games: mean(players.map((p) => p.games)),
-        winPct: mean(players.map((p) => p.winPct)),
-        ppgFor: mean(players.map((p) => p.ppgFor)),
-        pointDiff: mean(players.map((p) => p.pointDiff)),
-        callPct: mean(players.map((p) => p.callPct)),
-        marches: mean(players.map((p) => p.marches)),
-        loneWon: mean(players.map((p) => p.loneWon)),
-        currentStreak: 0,
-        radar: leagueRadar,
-      };
-    }
-    const p = players.find((pl) => pl.name === sel);
-    if (!p) return null;
-    return {
-      label: p.name,
-      rating: elo.get(p.name)?.rating ?? 1500,
-      games: p.games,
-      winPct: p.winPct,
-      ppgFor: p.ppgFor,
-      pointDiff: p.pointDiff,
-      callPct: p.callPct,
-      marches: p.marches,
-      loneWon: p.loneWon,
-      currentStreak: p.currentStreak,
-      radar: radar.get(p.name)?.scaled ?? leagueRadar,
-    };
-  };
-
-  const ea = entity(a);
-  const eb = entity(b);
-
-  const Select = ({ value, onChange, allowLeague }: { value: string; onChange: (v: string) => void; allowLeague: boolean }) => (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-2.5 outline-none focus:border-gold text-white"
-    >
-      {allowLeague && <option value={LEAGUE}>🏆 League average</option>}
-      {names.map((n) => (
-        <option key={n} value={n}>
-          {n}
-        </option>
-      ))}
-    </select>
-  );
+  const ea = useMemo(() => buildEntity(a, players, elo, radar, leagueRadar), [a, players, elo, radar, leagueRadar]);
+  const eb = useMemo(() => buildEntity(b, players, elo, radar, leagueRadar), [b, players, elo, radar, leagueRadar]);
 
   return (
     <main className="min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto">
@@ -156,8 +177,8 @@ export default function ComparePage() {
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <Select value={a} onChange={setA} allowLeague={false} />
-            <Select value={b} onChange={setB} allowLeague />
+            <Select value={a} onChange={setA} names={names} allowLeague={false} />
+            <Select value={b} onChange={setB} names={names} allowLeague />
           </div>
 
           {ea && eb && (

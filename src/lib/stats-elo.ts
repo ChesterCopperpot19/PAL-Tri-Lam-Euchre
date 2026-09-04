@@ -49,7 +49,9 @@ export function computeElo(matches: MatchRecord[]): Map<string, EloResult> {
     rating.set(name, after);
     count.set(name, g + 1);
     delta.set(name, after - before);
-    peak.set(name, Math.max(peak.get(name) ?? after, after));
+    // Peak is seeded from the START rating so a player who only ever loses
+    // still shows 1500 as their high-water mark, not their post-game-1 rating.
+    peak.set(name, Math.max(peak.get(name) ?? START, after));
     const h = history.get(name) ?? [];
     h.push({ ts, rating: Math.round(after) });
     history.set(name, h);
@@ -88,8 +90,9 @@ export function computeElo(matches: MatchRecord[]): Map<string, EloResult> {
 
 /**
  * Most-improved: Elo gained over a player's last `window` games (vs. their
- * rating before that window, or 1500 if they have fewer games). Requires
- * `minGames` so it isn't noise. Returns the biggest gainer, or null.
+ * rating just before that window). Players without a full window of games are
+ * skipped — comparing against the 1500 start would reward newcomers' provisional
+ * swings. Requires `minGames` so it isn't noise. Returns the biggest gainer, or null.
  */
 export function mostImproved(
   elo: Map<string, EloResult>,
@@ -100,7 +103,8 @@ export function mostImproved(
   for (const r of elo.values()) {
     if (r.games < minGames) continue;
     const h = r.history;
-    const past = h.length > window ? h[h.length - 1 - window].rating : START;
+    if (h.length <= window) continue; // needs a full window to measure against
+    const past = h[h.length - 1 - window].rating;
     const gain = Math.round(r.rating - past);
     if (!best || gain > best.gain) best = { name: r.name, gain };
   }

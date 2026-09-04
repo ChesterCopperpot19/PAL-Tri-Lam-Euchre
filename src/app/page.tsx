@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useDisplayName, usePlayerId } from '@/lib/usePlayerId';
 import { getSocket } from '@/lib/socket-client';
+import { readRoomToken, storeRoomToken } from '@/lib/room-token';
 import PlayerNameSelect from '@/components/PlayerNameSelect';
 import type { RoomListEntry } from '@/lib/shared-types';
 
@@ -27,11 +28,29 @@ export default function LandingPage() {
   const [error, setError] = useState<string | null>(null);
   const [rooms, setRooms] = useState<RoomListEntry[]>([]);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
+  // The background video is only mounted for wide viewports with no
+  // reduced-motion preference. Decided client-side in an effect (default off)
+  // so the server-rendered markup and the first client render agree; phones
+  // and reduced-motion users never download the multi-MB mp4 at all.
+  const [showVideo, setShowVideo] = useState(false);
+  useEffect(() => {
+    const motionOk = window.matchMedia('(prefers-reduced-motion: no-preference)');
+    const wideOk = window.matchMedia('(min-width: 641px)');
+    const update = () => setShowVideo(motionOk.matches && wideOk.matches);
+    update();
+    motionOk.addEventListener('change', update);
+    wideOk.addEventListener('change', update);
+    return () => {
+      motionOk.removeEventListener('change', update);
+      wideOk.removeEventListener('change', update);
+    };
+  }, []);
 
   // Background video. Speed and loop trimming are baked into the file itself
   // (24fps source slowed 4x with motion-interpolated frames at 30fps, stray
   // opening frames cut). Chrome refuses autoplay in hidden tabs and won't
-  // retry on its own, so resume on visibility/focus/click.
+  // retry on its own, so resume on visibility/focus/click. Re-runs when the
+  // <video> mounts, since the ref is empty until then.
   useEffect(() => {
     const v = bgVideoRef.current;
     if (!v) return;
@@ -49,7 +68,7 @@ export default function LandingPage() {
       window.removeEventListener('focus', resume);
       document.removeEventListener('click', resume);
     };
-  }, []);
+  }, [showVideo]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -84,13 +103,17 @@ export default function LandingPage() {
     setBusy(true);
     setError(null);
     const socket = getSocket();
+    const code = (joinCode || '').toUpperCase().trim();
     socket.emit(
       'room:join',
       {
-        code: (joinCode || '').toUpperCase().trim(),
+        code,
         name: name.trim(),
         playerId,
         asSpectator,
+        // Re-joining a room we were already in (e.g. from the room list) needs
+        // the reclaim token we were given the first time.
+        token: code ? readRoomToken(code) : undefined,
       },
       (res) => {
         setBusy(false);
@@ -99,6 +122,8 @@ export default function LandingPage() {
           return;
         }
         const c = res.snapshot.code;
+        // The room page re-joins on mount; without this token it'd be refused.
+        storeRoomToken(c, res.token);
         const role = asSpectator ? 'spectate' : 'play';
         router.push(`/room/${c}?role=${role}`);
       }
@@ -111,17 +136,21 @@ export default function LandingPage() {
 
   return (
     <>
-      <video
-        ref={bgVideoRef}
-        className="bg-video"
-        src="/bg.mp4"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        aria-hidden
-      />
+      {/* Without the video, the body's Royal radial gradient (globals.css) is
+          the background and the scrim still applies its vignette on top. */}
+      {showVideo && (
+        <video
+          ref={bgVideoRef}
+          className="bg-video"
+          src="/bg.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-hidden
+        />
+      )}
       <div className="bg-scrim" />
       <main className="min-h-screen flex flex-col items-center justify-center px-4 py-10 gap-6">
       <div className="w-full max-w-md bg-black/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur shadow-2xl">
@@ -150,7 +179,7 @@ export default function LandingPage() {
           Create New Game
         </button>
 
-        <div className="text-center text-white/40 text-xs my-2">— or join an existing room —</div>
+        <div className="text-center text-white/60 text-xs my-2">— or join an existing room —</div>
 
         <div className="flex gap-2">
           <input
@@ -158,6 +187,7 @@ export default function LandingPage() {
             onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 6))}
             maxLength={6}
             placeholder="ROOM CODE"
+            aria-label="Room code"
             className="flex-1 bg-black/40 border border-white/15 rounded-lg px-3 py-2.5 tracking-[0.3em] uppercase outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-gold/50"
           />
         </div>

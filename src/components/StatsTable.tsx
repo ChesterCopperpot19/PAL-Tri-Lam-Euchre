@@ -2,8 +2,7 @@
 import type { HandSummary, SeatIndex } from '@/server/engine/types';
 import { TEAM_OF } from '@/server/engine/types';
 import type { RoomMember } from '@/lib/shared-types';
-
-const SEAT_NAME = ['South', 'West', 'North', 'East'] as const;
+import { SEAT_NAME } from '@/lib/format';
 
 type Stats = {
   seat: SeatIndex;

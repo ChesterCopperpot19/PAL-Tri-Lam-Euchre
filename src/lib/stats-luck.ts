@@ -7,6 +7,13 @@
 //
 // Needs the heavy trick log (`stats:hands`), so it's computed inside the
 // on-demand panel, not the default dashboard payload.
+//
+// Baseline caveat — maker-selection bias: the 7/24 "fair share" assumes trump
+// is chosen independently of the hands, but trump is NAMED by whoever holds
+// the most of it. Every seat's trump count is therefore measured against a suit
+// that was selected because someone was long in it, so the club-wide average
+// sits above 7·5/24 and the "luck" figure is best read relative to the other
+// players, not as an absolute deviation from a random deal.
 
 import type { MatchRecord } from './shared-types';
 import type { Card, Suit } from '@/server/engine/types';

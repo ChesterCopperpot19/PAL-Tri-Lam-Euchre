@@ -79,8 +79,11 @@ export function computeClutch(matches: MatchRecord[]): ClutchResult {
   let biggestComeback: ComebackGame | null = null;
 
   for (const m of games) {
-    const margin = Math.abs(m.finalScore.NS - m.finalScore.EW);
-    const close = margin <= CLOSE_MARGIN;
+    // Records missing a usable final score (e.g. a partial legacy import) can't
+    // be judged close or not — they simply don't count toward close games.
+    const fs = m.finalScore as MatchRecord['finalScore'] | undefined;
+    const hasScore = !!fs && Number.isFinite(fs.NS) && Number.isFinite(fs.EW);
+    const close = hasScore && Math.abs(fs.NS - fs.EW) <= CLOSE_MARGIN;
     const deficit = winnerMaxDeficit(m);
 
     if (deficit != null && deficit >= COMEBACK_DEFICIT) {

@@ -4,6 +4,7 @@
 import type { MatchRecord } from './shared-types';
 import type { BidEntry, HandSummary, Suit, Trick } from '@/server/engine/types';
 import { humanGames } from './stats-analytics';
+import { csvCell } from './stats-csv';
 import { SUIT_GLYPH as SUIT_SYMBOL } from './suits';
 
 const TEAM_OF: Record<number, 'NS' | 'EW'> = { 0: 'NS', 2: 'NS', 1: 'EW', 3: 'EW' };
@@ -125,12 +126,6 @@ function trickWinnersText(row: HandRow): string {
       return `T${i + 1}:${w}${card ? ' ' + cardText(card) : ''}`;
     })
     .join('; ');
-}
-
-function csvCell(v: unknown): string {
-  let s = String(v ?? '');
-  if (/^[=+@]/.test(s)) s = `'${s}`; // neutralize spreadsheet formula injection
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /** Comprehensive hand-grain CSV: one row per hand, with bids and trick winners. */

@@ -2,6 +2,7 @@
 // Who runs good: dealt-card luck reconstructed from the trick log. Loads the
 // heavy per-card detail on mount (the default payload omits it).
 
+import { useMemo } from 'react';
 import type { MatchRecord } from '@/lib/shared-types';
 import { computeLuck, EXPECTED_TRUMP_PER_HAND } from '@/lib/stats-luck';
 import { useFullHands } from './useFullHands';
@@ -9,7 +10,7 @@ import PlayerLink from './PlayerLink';
 
 export default function LuckIndex({ matches }: { matches: MatchRecord[] }) {
   const { detailed, loading } = useFullHands(matches);
-  const rows = computeLuck(detailed);
+  const rows = useMemo(() => computeLuck(detailed), [detailed]);
 
   if (loading && rows.length === 0) {
     return <p className="text-white/45 text-sm">Loading trick logs…</p>;

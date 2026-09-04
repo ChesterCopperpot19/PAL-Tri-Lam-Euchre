@@ -166,6 +166,8 @@ body {
     box-shadow: 0 0 0 3px rgba(255,184,28,0.9);
     transition: box-shadow 600ms ease-out;
   }
+  /* Tailwind's pulse (turn dots, bidding indicator) is decorative — hold still. */
+  .animate-pulse { animation: none !important; }
 }
 
 /* Pitt gold accents. */

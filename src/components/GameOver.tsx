@@ -1,10 +1,13 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { RedactedState } from '@/server/engine/redact';
 import type { RoomMember } from '@/lib/shared-types';
 import { teamName } from '@/lib/format';
+import { useModal } from '@/lib/useModal';
 import StatsTable from './StatsTable';
 import Scorecard from './Scorecard';
+
+const noop = () => {};
 
 export default function GameOver({
   state,
@@ -24,8 +27,13 @@ export default function GameOver({
   const ew = teamName(members, 'EW');
   const winner = state.scores.NS > state.scores.EW ? ns : ew;
   const [showCard, setShowCard] = useState(true);
+  // There's no "dismiss" for the game-over screen — Escape is a no-op, but we
+  // still want the focus trap and focus restore.
+  const primaryRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useModal(noop, { initialFocus: primaryRef });
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={`Game over — ${winner} win`}
@@ -78,7 +86,7 @@ export default function GameOver({
         <div className="text-center mt-5 flex items-center justify-center gap-3">
           {!isSpectator && (
             <button
-              autoFocus
+              ref={primaryRef}
               onClick={onRematch}
               className="bg-gold text-black font-semibold rounded-lg px-5 py-2.5 hover:brightness-110"
             >
@@ -86,7 +94,7 @@ export default function GameOver({
             </button>
           )}
           <button
-            autoFocus={isSpectator}
+            ref={isSpectator ? primaryRef : undefined}
             onClick={onLeave}
             className="bg-white/10 border border-white/20 text-white font-medium rounded-lg px-5 py-2.5 hover:bg-white/20"
           >

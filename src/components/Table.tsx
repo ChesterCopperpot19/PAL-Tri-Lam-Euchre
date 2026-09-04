@@ -1,6 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import { CardFace } from './Card';
+import { memo, useEffect, useRef, useState } from 'react';
 import Hand from './Hand';
 import PlayerSeat from './PlayerSeat';
 import TrickArea, { type PendingTrick } from './TrickArea';
@@ -21,7 +20,7 @@ import { sortHand } from '@/lib/hand-sort';
 import { playPing, unlockAudio } from '@/lib/sound';
 import Chat from './Chat';
 
-type Handlers = {
+export type Handlers = {
   onOrder: (alone: boolean) => void;
   onPass: () => void;
   onCall: (suit: Suit, alone: boolean) => void;
@@ -34,7 +33,11 @@ type Handlers = {
   onLeave: () => void;
 };
 
-export default function Table({
+/** Memoized: the room page re-renders on every toast/banner tick, and none of
+ *  those touch our props (`handlers` is a useMemo'd object on the page). */
+export default memo(Table);
+
+function Table({
   snapshot,
   myId,
   chat,
@@ -48,7 +51,6 @@ export default function Table({
   const state = snapshot.state;
   const viewerSeat = state.viewerSeat;
   const isSpectator = state.spectator;
-  const isHost = snapshot.hostPlayerId === myId;
   const me = snapshot.members.find((m) => m.playerId === myId);
 
   // Map "absolute seat 0..3" to "table position relative to viewer".
@@ -118,6 +120,9 @@ export default function Table({
   const [lonerWonFx, setLonerWonFx] = useState(false);
   const lonerWonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showRules, setShowRules] = useState(false);
+  // Only `completedTricks.length` moving past `prevTrickCountRef` starts an
+  // animation, so re-runs from the phase dep (which only ever changes in the
+  // same snapshot as a length change) are no-ops mid-animation.
   useEffect(() => {
     const ct = state.completedTricks;
     const len = ct.length;
@@ -162,20 +167,25 @@ export default function Table({
       }
       prevTrickCountRef.current = len;
     }
-  }, [state.completedTricks.length]);
+    // `state.completedTricks` is a fresh array on every snapshot; depending on its
+    // identity would restart the fly animation mid-flight. Length + phase is the cue.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.completedTricks.length, state.phase]);
 
   // When a hand ends on a *swept* loner (went alone AND took all 5 tricks — a
   // lone march), flash the celebration photo for 7 seconds. lastHand is set in
-  // the same state update that completes the 5th trick, so length === 5 is the cue.
+  // the same state update that completes the 5th trick, so length === 5 is the
+  // cue. Reduced to a boolean first: `lastHand` is a fresh object on every
+  // snapshot, and keying on it directly would re-arm the 7s timer each time.
+  const lonerSwept =
+    state.completedTricks.length === 5 && !!state.lastHand?.alone && !!state.lastHand?.march;
   useEffect(() => {
-    const last = state.lastHand;
-    if (state.completedTricks.length === 5 && last && last.alone && last.march) {
+    if (lonerSwept) {
       setLonerWonFx(true);
       if (lonerWonTimerRef.current) clearTimeout(lonerWonTimerRef.current);
       lonerWonTimerRef.current = setTimeout(() => setLonerWonFx(false), 7000);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.completedTricks.length]);
+  }, [lonerSwept]);
   useEffect(() => () => { if (lonerWonTimerRef.current) clearTimeout(lonerWonTimerRef.current); }, []);
 
   // Sound preference (persisted). Default on.
@@ -505,6 +515,7 @@ export default function Table({
           summary={state.lastHand}
           members={snapshot.members}
           myId={myId}
+          handIndex={state.history.length}
         />
       )}
       {state.phase === 'GAME_OVER' && !pendingTrick && !lonerWonFx && (

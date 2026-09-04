@@ -399,3 +399,16 @@ describe('engine: dealer-discard flow', () => {
     expect(r.state.hands[0].length).toBe(6);
   });
 });
+
+describe('input hardening', () => {
+  it('rejects a bogus suit in round-2 calls', () => {
+    let s = createGame();
+    s = applyAction(s, { type: 'START_HAND' }).state;
+    // Everyone passes round 1 → BIDDING_2, turn = dealer's left.
+    for (let i = 0; i < 4; i++) s = applyAction(s, { type: 'BID_PASS', seat: s.turn }).state;
+    expect(s.phase).toBe('BIDDING_2');
+    expect(() =>
+      applyAction(s, { type: 'BID_CALL', seat: s.turn, suit: 'X' as never, alone: false })
+    ).toThrow(/invalid suit/);
+  });
+});

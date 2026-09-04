@@ -95,27 +95,10 @@ export type ManualMatchInput = {
   handsPlayed?: number;
 };
 
-/** Aggregated all-time stats for a single (human) player, keyed by name. */
-export type PlayerAllTime = {
-  name: string;
-  games: number;
-  wins: number;
-  tricks: number;
-  defensiveTricks: number;
-  handsCalled: number;
-  callsWon: number;
-  euchres: number;
-  marches: number;
-  loneCalled: number;
-  loneWon: number;
-};
-
 export type StatsPayload = {
   /** Most-recent matches first (capped). Each hand carries its SUMMARY only —
    *  the heavy per-card `bids`/`tricks` are omitted and fetched via `stats:hands`. */
   matches: MatchRecord[];
-  /** Human players, aggregated all-time, sorted by wins. */
-  players: PlayerAllTime[];
   /** Total matches recorded overall. */
   totalMatches: number;
 };
@@ -148,8 +131,18 @@ export type RoomListEntry = {
 // ---------- client → server ----------
 export type ClientToServerEvents = {
   'room:join': (
-    payload: { code: string; name: string; playerId: string; asSpectator?: boolean },
-    ack: (res: { ok: true; snapshot: RoomSnapshot } | { ok: false; error: string }) => void
+    payload: {
+      code: string;
+      name: string;
+      playerId: string;
+      asSpectator?: boolean;
+      /** Per-room reclaim secret returned by an earlier successful join. Required
+       *  to re-attach to a seat/spectator slot already registered to `playerId`. */
+      token?: string;
+    },
+    ack: (
+      res: { ok: true; snapshot: RoomSnapshot; token: string } | { ok: false; error: string }
+    ) => void
   ) => void;
   'room:leave': () => void;
   'room:start': () => void;
@@ -166,8 +159,9 @@ export type ClientToServerEvents = {
   'stats:get': (ack: (payload: StatsPayload) => void) => void;
   'stats:hands': (ack: (payload: HandsPayload) => void) => void;
   'stats:add': (
-    payload: ManualMatchInput,
-    ack: (res: { ok: true } | { ok: false; error: string }) => void
+    /** `key` is the shared stats admin key (STATS_ADMIN_KEY); writes are gated. */
+    payload: ManualMatchInput & { key?: string },
+    ack: (res: { ok: true } | { ok: false; error: string; code?: 'auth' }) => void
   ) => void;
   'stats:delete': (
     payload: { id: string; key: string },

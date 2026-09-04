@@ -59,6 +59,13 @@ export function computeRadar(players: PlayerRow[]): Map<string, { raw: RadarAxes
 
 // ── Profile ──────────────────────────────────────────────────────────────────
 
+/** "YYYY-MM-DD" in the local timezone. */
+export function localDayKey(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export type PartnerSplit = {
   name: string;
   games: number;
@@ -139,7 +146,9 @@ export function computeProfile(name: string, matches: MatchRecord[]): PlayerProf
     trend.push({ ts: m.ts, game: idx + 1, cumulativeDiff: cumDiff, cumulativeWins: cumWins });
     rollingForm.push(win);
 
-    const day = new Date(m.ts).toISOString().slice(0, 10);
+    // Bucket by LOCAL calendar day (a game night that runs past midnight UTC
+    // shouldn't split across two days in the player's own timezone).
+    const day = localDayKey(m.ts);
     const av = activity.get(day) ?? { games: 0, wins: 0 };
     av.games += 1;
     av.wins += win ? 1 : 0;

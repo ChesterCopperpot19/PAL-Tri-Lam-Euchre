@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import type { PlayerRow, SortKey } from '@/lib/stats-analytics';
 import Seahorse from './Seahorse';
+import { pct } from '@/lib/stats-format';
 
 /** A leaderboard row enriched with the player's Elo rating. */
 export type RankedRow = PlayerRow & {
@@ -13,7 +14,6 @@ export type RankedRow = PlayerRow & {
 /** Sortable columns — the PlayerRow keys plus the derived "rating". */
 export type LeaderKey = SortKey | 'rating';
 
-const pct = (n: number) => `${Math.round(n * 100)}%`;
 const ppg = (n: number) => n.toFixed(1);
 
 function RatingCell({ r }: { r: RankedRow }) {

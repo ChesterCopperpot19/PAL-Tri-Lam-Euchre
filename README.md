@@ -97,6 +97,15 @@ __tests__/          # Vitest engine tests
 
 The app is one Node process, so the simplest path is a single web service.
 
+### Environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection string (Neon). Omit locally to fall back to `data/matches.json`. |
+| `STATS_ADMIN_KEY` | Shared key required to log a manual game or delete a game on the stats pages. Unset = those actions are locked. Use a long random string. |
+| `ALLOWED_ORIGINS` | Comma-separated browser origins allowed to open a socket (e.g. `https://euchre.example.com`). Defaults to `RENDER_EXTERNAL_URL` on Render, and to localhost in dev. |
+| `PGSSL_INSECURE` | Set to `1` only if the host cannot verify the database's TLS certificate. Off by default (certificates are verified). |
+
 ### Render (recommended for free tier)
 
 1. Push this repo to GitHub.
@@ -140,8 +149,7 @@ A 5-step sanity check after deploy:
 
 ## Out of scope (for now)
 
-- Persistence across server restarts (rooms are in-memory; restarting kicks everyone, fine for a casual session).
-- Bots / AI fill-in.
+- Persistence of *rooms* across server restarts (rooms are in-memory; restarting kicks everyone, fine for a casual session). Finished games are persisted to Postgres for the stats pages.
 - Persistent accounts / matchmaking.
 
 PRs welcome — start with `__tests__/engine.test.ts` to keep behavior pinned.

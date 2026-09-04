@@ -4,19 +4,27 @@ import { SuitGlyph } from './Card';
 import type { HandSummary as HS, SeatIndex } from '@/server/engine/types';
 import { TEAM_OF } from '@/server/engine/types';
 import type { RoomMember } from '@/lib/shared-types';
-import { teamName } from '@/lib/format';
+import { SEAT_NAME, teamName } from '@/lib/format';
+import { useModal } from '@/lib/useModal';
 
-const SEAT_NAME = ['South', 'West', 'North', 'East'] as const;
+const noop = () => {};
 
 export default function HandSummary({
   summary,
   members,
   myId,
+  handIndex,
 }: {
   summary: HS;
   members: RoomMember[];
   myId: string;
+  /** Stable identity for THIS hand (e.g. `state.history.length`). Every
+   *  snapshot carries a fresh `summary` object, so keying on the object would
+   *  restart the countdown on each reconnect. */
+  handIndex?: number;
 }) {
+  const handKey = handIndex ?? `${summary.dealer}-${summary.maker}-${summary.trump}`;
+
   // Countdown until the server auto-advances to the next hand.
   const [secondsLeft, setSecondsLeft] = useState(6);
   useEffect(() => {
@@ -25,13 +33,13 @@ export default function HandSummary({
       setSecondsLeft((s) => (s > 0 ? s - 1 : 0));
     }, 1000);
     return () => clearInterval(id);
-  }, [summary]);
+  }, [handKey]);
 
-  // Move focus into the dialog so screen readers announce the result.
+  // Move focus onto the panel so screen readers announce the result. There is
+  // nothing to dismiss (the server advances on its own), so Escape is a no-op,
+  // but the trap + focus restore still apply.
   const panelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    panelRef.current?.focus();
-  }, []);
+  const dialogRef = useModal(noop, { initialFocus: panelRef });
   const makerName =
     members.find((m) => m.seat === summary.maker)?.name ?? SEAT_NAME[summary.maker];
 
@@ -66,6 +74,7 @@ export default function HandSummary({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={`Hand complete — ${headline}`}

@@ -87,7 +87,7 @@ export default function PlayerSeat({
             <CardBack size="sm" count={handCount} />
           </div>
         ) : (
-          <div className="text-white/30 text-xs italic">no cards</div>
+          <div className="text-white/60 text-xs italic">no cards</div>
         )}
       </div>
     </div>

@@ -6,7 +6,7 @@ import { SUIT_COLOR_ON_DARK, SUIT_GLYPH } from '@/lib/suits';
 import SuitedText from './SuitedText';
 
 function Sym({ s }: { s: Suit | null | undefined }) {
-  if (!s) return <span className="text-white/30">—</span>;
+  if (!s) return <span className="text-white/60">—</span>;
   return <span style={{ color: SUIT_COLOR_ON_DARK[s] }}>{SUIT_GLYPH[s]}</span>;
 }
 const cardText = (c: Card) => `${c.rank}${SUIT_GLYPH[c.suit]}`;
@@ -41,10 +41,10 @@ export default function Scorecard({ state, members }: { state: RedactedState; me
             </div>
             {(h.tricks ?? []).map((t, ti) => (
               <div key={ti} className="text-white/75 leading-relaxed">
-                <span className="text-white/40">T{ti + 1}</span> led <Sym s={t.ledSuit} /> —{' '}
+                <span className="text-white/60">T{ti + 1}</span> led <Sym s={t.ledSuit} /> —{' '}
                 {t.plays.map((p, pi) => (
                   <span key={pi} className={t.winner === p.seat ? 'text-gold font-medium' : ''}>
-                    {pi > 0 && <span className="text-white/30">, </span>}
+                    {pi > 0 && <span className="text-white/60">, </span>}
                     {name(p.seat)} <SuitedText text={cardText(p.card)} />
                     {t.winner === p.seat ? ' ✓' : ''}
                   </span>

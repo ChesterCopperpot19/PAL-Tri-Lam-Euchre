@@ -28,9 +28,10 @@ function getPool(): Pool | null {
   }
   pool = new Pool({
     connectionString: url,
-    // Neon (and most managed Postgres) require TLS. The cert chain is valid,
-    // but we don't pin it — this keeps connections simple and portable.
-    ssl: { rejectUnauthorized: false },
+    // Neon (and most managed Postgres) require TLS. The certificate chain is
+    // signed by a public CA, so verify it (default). PGSSL_INSECURE=1 is an
+    // escape hatch for a host whose Node lacks the root store.
+    ssl: { rejectUnauthorized: process.env.PGSSL_INSECURE !== '1' },
     max: 5,
   });
   pool.on('error', (e) => {
@@ -93,14 +94,29 @@ function fileRecord(record: MatchRecord): void {
   }
 }
 
+// ---- Read cache ------------------------------------------------------------
+//
+// The server is a single process and the only writer, so the full match list
+// can be cached in memory and refreshed only after a write. Without this every
+// stats page load re-read up to MAX_MATCHES JSONB rows (with hand history).
+
+let cache: MatchRecord[] | null = null;
+
+/** Drop the cached match list (call after any write). Exported for tests. */
+export function invalidateMatchCache(): void {
+  cache = null;
+}
+
 // ---- Public API ------------------------------------------------------------
 
 export async function recordMatch(record: MatchRecord): Promise<void> {
   const p = getPool();
   if (!p) {
     fileRecord(record);
+    cache = null;
     return;
   }
+  cache = null;
   await ensureSchema(p);
   await p.query(
     `INSERT INTO matches (id, ts, data)
@@ -116,7 +132,9 @@ export async function recordMatch(record: MatchRecord): Promise<void> {
   );
 }
 
+/** All matches, oldest first. Callers must treat the array as read-only. */
 export async function getMatches(): Promise<MatchRecord[]> {
+  if (cache) return cache;
   const p = getPool();
   if (!p) {
     fileEnsureLoaded();
@@ -128,11 +146,13 @@ export async function getMatches(): Promise<MatchRecord[]> {
     [MAX_MATCHES]
   );
   // JSONB columns come back already parsed.
-  return res.rows.map((r) => r.data);
+  cache = res.rows.map((r) => r.data);
+  return cache;
 }
 
 /** Delete one match by id. Returns true if a row was removed. */
 export async function deleteMatch(id: string): Promise<boolean> {
+  cache = null;
   const p = getPool();
   if (!p) {
     fileEnsureLoaded();

@@ -1,8 +1,7 @@
 'use client';
 import type { DuoRow } from '@/lib/stats-analytics';
 import PlayerLink from './PlayerLink';
-
-const pct = (n: number) => `${Math.round(n * 100)}%`;
+import { pct } from '@/lib/stats-format';
 
 function DuoLine({ d, rank }: { d: DuoRow; rank: number }) {
   return (

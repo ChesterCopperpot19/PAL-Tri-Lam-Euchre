@@ -3,6 +3,7 @@
 // Club-wide bar chart (share of calls + make rate per suit) and a per-player
 // heatmap table matching the calls-by-rank panel.
 
+import { useMemo } from 'react';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -28,7 +29,7 @@ function SuitHeader({ s }: { s: (typeof SUITS)[number] }) {
 }
 
 export default function CallsBySuit({ matches }: { matches: MatchRecord[] }) {
-  const { bySuit, madeBySuit, total, players } = computeCallSuits(matches);
+  const { bySuit, madeBySuit, total, players } = useMemo(() => computeCallSuits(matches), [matches]);
 
   if (total === 0) {
     return (

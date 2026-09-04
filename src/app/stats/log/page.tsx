@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getSocket } from '@/lib/socket-client';
 import PlayerNameSelect from '@/components/PlayerNameSelect';
 import type { ManualMatchInput, ManualPlayerInput } from '@/lib/shared-types';
+import { clearAdminKey, getAdminKey, promptAdminKey } from '@/lib/stats-admin-key';
 
 // The four name slots, in form order. team1 = partners, team2 = partners.
 const SLOTS = ['t1p1', 't1p2', 't2p1', 't2p2'] as const;
@@ -38,6 +39,8 @@ export default function LogGamePage() {
   const [details, setDetails] = useState<Record<string, Record<string, string>>>({});
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [error, setError] = useState<string | null>(null);
+  // Set when the server rejected the admin key; shows the "enter key & retry" affordance.
+  const [authFailed, setAuthFailed] = useState(false);
 
   // Pre-fill the same crew from last time for quick repeat entry.
   useEffect(() => {
@@ -94,14 +97,25 @@ export default function LogGamePage() {
     };
   }
 
-  function save() {
+  /** Logging a game is gated by the shared stats admin key (same one the
+   *  dashboard uses for deletes). Reuse a stored key; otherwise prompt for it.
+   *  Pass `forcePrompt` to re-ask even when a key is stored (after an auth failure). */
+  function save(forcePrompt = false) {
     setError(null);
     if (validation) {
       setError(validation);
       return;
     }
+    const key =
+      (forcePrompt ? null : getAdminKey()) ??
+      promptAdminKey('Enter the stats admin key to log this game:');
+    if (!key) {
+      setError('An admin key is required to log a game.');
+      return;
+    }
+    setAuthFailed(false);
     setStatus('saving');
-    getSocket().emit('stats:add', buildInput(), (res) => {
+    getSocket().emit('stats:add', { ...buildInput(), key }, (res) => {
       if (res.ok) {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(names));
@@ -109,8 +123,14 @@ export default function LogGamePage() {
           /* ignore */
         }
         setStatus('saved');
+        return;
+      }
+      setStatus('idle');
+      if (res.code === 'auth') {
+        clearAdminKey(); // the stored key is wrong — don't keep re-sending it
+        setAuthFailed(true);
+        setError('Not authorized — enter the admin key');
       } else {
-        setStatus('idle');
         setError(res.error);
       }
     });
@@ -125,6 +145,7 @@ export default function LogGamePage() {
     setShowDetails(false);
     setStatus('idle');
     setError(null);
+    setAuthFailed(false);
   }
 
   if (status === 'saved') {
@@ -315,10 +336,22 @@ export default function LogGamePage() {
           )}
         </div>
 
-        {error && <div className="text-red-300 text-sm">{error}</div>}
+        {error && (
+          <div className="text-red-300 text-sm flex flex-wrap items-center gap-2">
+            <span>{error}</span>
+            {authFailed && (
+              <button
+                onClick={() => save(true)}
+                className="text-xs bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-2.5 py-1 text-white"
+              >
+                🔑 Enter admin key &amp; retry
+              </button>
+            )}
+          </div>
+        )}
 
         <button
-          onClick={save}
+          onClick={() => save()}
           disabled={status === 'saving' || validation !== null}
           className="w-full bg-gold text-black font-semibold rounded-lg py-3 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
           title={validation ?? 'Save this game'}

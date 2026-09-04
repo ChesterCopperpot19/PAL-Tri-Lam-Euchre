@@ -5,6 +5,9 @@ import { ChatMessage, RoomMember } from '@/lib/shared-types';
 export type Seat = {
   playerId: string;
   name: string;
+  /** Per-room reclaim secret, handed only to the joining socket. Required to
+   *  re-attach to this registration; bots have an empty token (unclaimable). */
+  token: string;
   socketId: string | null;
   /** When socketId becomes null we record this. After grace, the seat is freed. */
   disconnectedAt: number | null;
@@ -15,6 +18,7 @@ export type Seat = {
 export type Spectator = {
   playerId: string;
   name: string;
+  token: string;
   socketId: string;
 };
 
@@ -26,7 +30,8 @@ export type Room = {
   spectators: Spectator[];
   state: GameState;
   chatLog: ChatMessage[];
-  /** Per-socket recent chat timestamps (rate limit). */
+  /** Per-player recent chat timestamps (rate limit), keyed by playerId so a
+   *  reconnect doesn't reset the budget. Pruned lazily. */
   rateLimit: Map<string, number[]>;
   createdAt: number;
   /** Bot tick timer (null when no bot move pending). */
@@ -35,8 +40,10 @@ export type Room = {
   handEndTimer: NodeJS.Timeout | null;
   /** Auto-play timer for an absent/idle human whose turn it is. */
   turnTimer: NodeJS.Timeout | null;
-  /** completedTricks length at the last bot tick (per-room, GC'd with the room). */
+  /** completedTricks length at the last broadcast (per-room, GC'd with the room). */
   lastTrickCount: number;
+  /** True when the most recent broadcast completed a trick (drives the bot delay). */
+  trickJustCompleted: boolean;
   /** Guards against recording the same finished game more than once. */
   statsRecorded: boolean;
   /** When the current game started (epoch ms) — for game-duration stats. */
@@ -44,6 +51,8 @@ export type Room = {
 };
 
 const DISCONNECT_GRACE_MS = 60_000;
+/** Hard cap on concurrent rooms — protects memory against a create-room loop. */
+export const MAX_ROOMS = 200;
 
 function makeCode(): string {
   // 4 letters, ambiguous chars dropped (no I/O/0/1).
@@ -53,7 +62,7 @@ function makeCode(): string {
   return out;
 }
 
-function stripControlChars(s: string): string {
+export function stripControlChars(s: string): string {
   let out = '';
   for (let i = 0; i < s.length; i++) {
     const code = s.charCodeAt(i);
@@ -79,7 +88,9 @@ export function nextHostPlayerId(room: Room): string {
 export class RoomManager {
   private rooms = new Map<string, Room>();
 
+  /** Throws if the room cap is reached. */
   create(hostPlayerId: string): Room {
+    if (this.rooms.size >= MAX_ROOMS) throw new Error('Too many active rooms — try again in a minute');
     let code = makeCode();
     while (this.rooms.has(code)) code = makeCode();
     const room: Room = {
@@ -95,6 +106,7 @@ export class RoomManager {
       handEndTimer: null,
       turnTimer: null,
       lastTrickCount: 0,
+      trickJustCompleted: false,
       statsRecorded: false,
     };
     this.rooms.set(code, room);
@@ -213,19 +225,25 @@ export class RoomManager {
   /** Add chat message with rate-limit check. Returns null if dropped. */
   postChat(
     room: Room,
-    socketId: string,
+    playerId: string,
     name: string,
     fromSpectator: boolean,
     rawText: string
   ): ChatMessage | null {
-    const cleaned = stripControlChars(rawText).slice(0, 240).trim();
+    const cleaned = stripControlChars(rawText.slice(0, 1000)).slice(0, 240).trim();
     if (!cleaned) return null;
     const now = Date.now();
-    const arr = room.rateLimit.get(socketId) ?? [];
+    // Lazy prune so the map can't grow with every player who ever chatted.
+    if (room.rateLimit.size > 32) {
+      for (const [k, v] of room.rateLimit) {
+        if (!v.some((t) => now - t < 10_000)) room.rateLimit.delete(k);
+      }
+    }
+    const arr = room.rateLimit.get(playerId) ?? [];
     const recent = arr.filter((t) => now - t < 10_000);
     if (recent.length >= 5) return null;
     recent.push(now);
-    room.rateLimit.set(socketId, recent);
+    room.rateLimit.set(playerId, recent);
     const msg: ChatMessage = {
       id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
       from: name,

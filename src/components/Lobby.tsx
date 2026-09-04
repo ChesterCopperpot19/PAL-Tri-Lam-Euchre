@@ -1,9 +1,49 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RoomMember, RoomSnapshot } from '@/lib/shared-types';
+import { useModal } from '@/lib/useModal';
 
 const SEAT_LABEL = ['South (you)', 'West', 'North', 'East'] as const;
 const SEAT_TEAM = ['N/S', 'E/W', 'N/S', 'E/W'] as const;
+
+/** "Quit this game?" confirmation. Its own component so the modal hook mounts
+ *  and unmounts with the dialog (focus trap on, focus restored on close). */
+function QuitDialog({ onStay, onQuit }: { onStay: () => void; onQuit: () => void }) {
+  const stayRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useModal(onStay, { initialFocus: stayRef });
+  return (
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Quit this game?"
+      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+    >
+      <div className="bg-[#141B4D] border border-gold/40 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+        <div className="font-display text-2xl text-gold">Quit this game?</div>
+        <p className="text-sm text-white/75">
+          You&apos;ll leave this room right away. If you&apos;re the last person here,
+          the room closes and any bots are removed.
+        </p>
+        <div className="flex gap-2">
+          <button
+            ref={stayRef}
+            onClick={onStay}
+            className="flex-1 bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg py-2.5 font-medium"
+          >
+            Stay
+          </button>
+          <button
+            onClick={onQuit}
+            className="flex-1 bg-gold text-black font-semibold rounded-lg py-2.5 hover:brightness-110"
+          >
+            Quit game
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Lobby({
   snapshot,
@@ -27,6 +67,11 @@ export default function Lobby({
   onLeave: () => void;
 }) {
   const [confirmLeave, setConfirmLeave] = useState(false);
+  // Read in an effect, not during render, so server and client markup match.
+  const [origin, setOrigin] = useState('');
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
   const isHost = snapshot.hostPlayerId === myId;
   const meSeat = snapshot.members.find((m) => m.playerId === myId)?.seat ?? null;
   // Any seated player can start once the table is full — not just the host.
@@ -69,41 +114,13 @@ export default function Lobby({
         <p className="text-white/70 text-sm mt-2">
           Share this code with friends, or send the link:{' '}
           <code className="bg-black/40 px-1.5 py-0.5 rounded">
-            {typeof window !== 'undefined' ? window.location.origin : ''}/?code={snapshot.code}
+            {origin}/?code={snapshot.code}
           </code>
         </p>
       </div>
 
       {confirmLeave && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Quit this game?"
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
-        >
-          <div className="bg-[#141B4D] border border-gold/40 rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
-            <div className="font-display text-2xl text-gold">Quit this game?</div>
-            <p className="text-sm text-white/75">
-              You&apos;ll leave this room right away. If you&apos;re the last person here,
-              the room closes and any bots are removed.
-            </p>
-            <div className="flex gap-2">
-              <button
-                autoFocus
-                onClick={() => setConfirmLeave(false)}
-                className="flex-1 bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg py-2.5 font-medium"
-              >
-                Stay
-              </button>
-              <button
-                onClick={onLeave}
-                className="flex-1 bg-gold text-black font-semibold rounded-lg py-2.5 hover:brightness-110"
-              >
-                Quit game
-              </button>
-            </div>
-          </div>
-        </div>
+        <QuitDialog onStay={() => setConfirmLeave(false)} onQuit={onLeave} />
       )}
 
       <div className="grid grid-cols-2 gap-3">
@@ -149,7 +166,7 @@ export default function Lobby({
                       )}
                     </>
                   ) : (
-                    <span className="text-white/40 italic">empty</span>
+                    <span className="text-white/60 italic">empty</span>
                   )}
                 </div>
                 <div className="flex items-center gap-1 flex-wrap justify-end">

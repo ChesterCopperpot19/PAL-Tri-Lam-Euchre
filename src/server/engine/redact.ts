@@ -37,8 +37,8 @@ function slimHand(h: HandSummary): HandSummary {
  * - viewerSeat=null → spectator: all hands hidden.
  * - viewerSeat=N    → player N: their own hand visible, others hidden.
  *
- * The kitty (containing buried cards + the discarded card after dealer-discard) and
- * the random seed are NEVER sent to clients.
+ * The kitty (the three buried cards under the up-card) and the random seed are
+ * NEVER sent to clients. The dealer's discard is dropped from state entirely.
  */
 export function redactState(state: GameState, viewerSeat: SeatIndex | null): RedactedState {
   const seats: Record<SeatIndex, PublicSeatInfo> = {
