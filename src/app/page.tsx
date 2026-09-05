@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDisplayName, usePlayerId } from '@/lib/usePlayerId';
 import { getSocket } from '@/lib/socket-client';
 import { readRoomToken, storeRoomToken } from '@/lib/room-token';
@@ -27,49 +27,6 @@ export default function LandingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rooms, setRooms] = useState<RoomListEntry[]>([]);
-  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
-  // The background video is only mounted for wide viewports with no
-  // reduced-motion preference. Decided client-side in an effect (default off)
-  // so the server-rendered markup and the first client render agree; phones
-  // and reduced-motion users never download the multi-MB mp4 at all.
-  const [showVideo, setShowVideo] = useState(false);
-  useEffect(() => {
-    const motionOk = window.matchMedia('(prefers-reduced-motion: no-preference)');
-    const wideOk = window.matchMedia('(min-width: 641px)');
-    const update = () => setShowVideo(motionOk.matches && wideOk.matches);
-    update();
-    motionOk.addEventListener('change', update);
-    wideOk.addEventListener('change', update);
-    return () => {
-      motionOk.removeEventListener('change', update);
-      wideOk.removeEventListener('change', update);
-    };
-  }, []);
-
-  // Background video. Speed and loop trimming are baked into the file itself
-  // (24fps source slowed 4x with motion-interpolated frames at 30fps, stray
-  // opening frames cut). Chrome refuses autoplay in hidden tabs and won't
-  // retry on its own, so resume on visibility/focus/click. Re-runs when the
-  // <video> mounts, since the ref is empty until then.
-  useEffect(() => {
-    const v = bgVideoRef.current;
-    if (!v) return;
-    const resume = () => {
-      if (v.paused) v.play().catch(() => {});
-    };
-    document.addEventListener('visibilitychange', resume);
-    window.addEventListener('pageshow', resume);
-    window.addEventListener('focus', resume);
-    document.addEventListener('click', resume);
-    resume();
-    return () => {
-      document.removeEventListener('visibilitychange', resume);
-      window.removeEventListener('pageshow', resume);
-      window.removeEventListener('focus', resume);
-      document.removeEventListener('click', resume);
-    };
-  }, [showVideo]);
-
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -136,26 +93,22 @@ export default function LandingPage() {
 
   return (
     <>
-      {/* Without the video, the body's Royal radial gradient (globals.css) is
-          the background and the scrim still applies its vignette on top. */}
-      {showVideo && (
-        <video
-          ref={bgVideoRef}
-          className="bg-video"
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
+      {/* Cathedral of Learning at blue hour. Decorative only, so it carries an
+          empty alt and is hidden from assistive tech; the scrim below tints and
+          darkens it for text contrast. Narrow viewports get the 900px crop.
+          eslint-disable-next-line @next/next/no-img-element */}
+      <picture>
+        <source media="(max-width: 640px)" srcSet="/cathedral-900.jpg" />
+        <img
+          className="bg-photo"
+          src="/cathedral.jpg"
+          alt=""
+          width={1672}
+          height={941}
+          fetchPriority="high"
           aria-hidden
-        >
-          {/* VP9 first: same source clip, ~18% smaller than the h264 fallback at
-              slightly better SSIM. Safari takes the mp4. Both are the original
-              1280x720 footage re-encoded, no trimming or downscaling. */}
-          <source src="/bg.webm" type="video/webm" />
-          <source src="/bg.mp4" type="video/mp4" />
-        </video>
-      )}
+        />
+      </picture>
       <div className="bg-scrim" />
       <main className="min-h-screen flex flex-col items-center justify-center px-4 py-10 gap-6">
       <div className="w-full max-w-md bg-black/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur shadow-2xl">
