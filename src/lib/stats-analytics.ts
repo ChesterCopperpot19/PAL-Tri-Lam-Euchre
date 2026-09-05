@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { MatchRecord, PlayerMatchStat } from './shared-types';
+import { pct } from './stats-format';
 
 // ── Output shapes ────────────────────────────────────────────────────────────
 
@@ -113,16 +114,36 @@ function canonicalizer(matches: MatchRecord[]): (name: string) => string {
   return (name) => display.get(nameKey(name)) ?? norm(name);
 }
 
+/** Arrays already produced by `prepareGames`/`humanGames`. Every compute
+ *  function calls `humanGames` on its input, so recognising an already-prepared
+ *  array lets the dashboard run the filter+canonicalize pass ONCE per history
+ *  and hand the same array to every panel, instead of copying it ~10 times per
+ *  render. WeakSet keys are the arrays themselves, so nothing leaks. */
+const prepared = new WeakSet<MatchRecord[]>();
+
 /** Keep only games where every one of the four seats was a human. Player names
  *  are canonicalized case-insensitively (first-seen casing wins) so "Dave" and
- *  "dave" don't split into two histories. */
+ *  "dave" don't split into two histories.
+ *
+ *  Idempotent: an array returned by `prepareGames`/`humanGames` is returned
+ *  as-is (re-filtering it would yield an identical copy). */
 export function humanGames(matches: MatchRecord[]): MatchRecord[] {
+  if (prepared.has(matches)) return matches;
+  return prepareGames(matches);
+}
+
+/** Run the human-only filter + name canonicalization once and return an array
+ *  that every compute function recognises as pre-filtered. Memoize this on the
+ *  client (useMemo on the match list) and pass the result everywhere. */
+export function prepareGames(matches: MatchRecord[]): MatchRecord[] {
   const canon = canonicalizer(matches);
-  return matches
+  const out = matches
     .filter(
       (m) => m.players.length === 4 && m.players.every((p) => !p.isBot && norm(p.name).length > 0)
     )
     .map((m) => ({ ...m, players: m.players.map((p) => ({ ...p, name: canon(p.name) })) }));
+  prepared.add(out);
+  return out;
 }
 
 /** Oldest → newest. Streak math depends on chronological order. */
@@ -439,7 +460,6 @@ export function computeSuperlatives(
   players: PlayerRow[],
   minGames: number
 ): Superlative[] {
-  const pct = (n: number) => `${Math.round(n * 100)}%`;
   const qualified = players.filter((p) => p.games >= minGames);
 
   const top = <T,>(rows: T[], score: (t: T) => number): T | null => {
@@ -581,15 +601,20 @@ export function filterMatches(matches: MatchRecord[], f: MatchFilter): MatchReco
 
 export function sortPlayers(rows: PlayerRow[], key: SortKey, dir: 'asc' | 'desc'): PlayerRow[] {
   const mult = dir === 'asc' ? 1 : -1;
-  // Rows with no data for a metric (null) always sort to the bottom, either direction.
-  const numOf = (v: string | number | null): number =>
-    v == null ? (dir === 'asc' ? Infinity : -Infinity) : (v as number);
+  const numOrNull = (v: string | number | null): number | null => (typeof v === 'number' ? v : null);
   return rows.slice().sort((x, y) => {
     const a = x[key];
     const b = y[key];
     if (typeof a === 'string' && typeof b === 'string') return a.localeCompare(b) * mult;
+    const na = numOrNull(a);
+    const nb = numOrNull(b);
+    // Rows with no data for a metric (null) always sort to the bottom, either
+    // direction. Two nulls are a tie (NOT Infinity − Infinity = NaN, which used
+    // to break the comparator) and fall through to the games/name tiebreak.
+    if (na == null && nb != null) return 1;
+    if (nb == null && na != null) return -1;
     // Numeric: primary by the chosen key, stable tiebreak by games then name.
-    const d = (numOf(a) - numOf(b)) * mult;
+    const d = na == null || nb == null ? 0 : (na - nb) * mult;
     if (d !== 0) return d;
     if (y.games !== x.games) return y.games - x.games;
     return x.name.localeCompare(y.name);

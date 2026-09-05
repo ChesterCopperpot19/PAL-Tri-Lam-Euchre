@@ -46,7 +46,7 @@ export default function Chat({
         className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5 text-sm"
       >
         {messages.length === 0 && (
-          <div className="text-white/40 italic">Say hi to your friends 👋</div>
+          <div className="text-white/60 italic">Say hi to your friends 👋</div>
         )}
         {messages.map((m) => (
           <div key={m.id} className="leading-snug">
@@ -64,6 +64,7 @@ export default function Chat({
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Type a message…"
+          aria-label="Chat message"
           maxLength={240}
           className="flex-1 bg-black/40 border border-white/15 rounded-md px-2 py-1.5 text-sm outline-none focus:border-gold"
         />

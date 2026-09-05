@@ -3,10 +3,19 @@
 import type { PlayerRow } from './stats-analytics';
 import type { EloResult } from './stats-elo';
 
-function cell(v: unknown): string {
-  let s = String(v);
-  if (/^[=+@]/.test(s)) s = `'${s}`; // neutralize spreadsheet formula injection
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+/** Escape one CSV cell. Shared by every CSV export (leaderboard, hand log).
+ *
+ *  - Formula injection: a cell starting with `=`, `+`, `-`, `@`, tab or CR is
+ *    prefixed with a single quote so spreadsheets treat it as text. Bare numeric
+ *    literals (e.g. "-3", "-1.25") are exempt — a number can't be a formula and
+ *    the stats export is full of negative streaks/margins.
+ *  - Quoting: a cell containing a quote, comma, LF or CR is wrapped in double
+ *    quotes with inner quotes doubled. */
+export function csvCell(v: unknown): string {
+  let s = String(v ?? '');
+  const numeric = typeof v === 'number' ? Number.isFinite(v) : /^-?\d+(\.\d+)?$/.test(s);
+  if (!numeric && /^[=+\-@\t\r]/.test(s)) s = `'${s}`; // neutralize spreadsheet formula injection
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export function playersToCSV(players: PlayerRow[], elo: Map<string, EloResult>): string {
@@ -38,5 +47,5 @@ export function playersToCSV(players: PlayerRow[], elo: Map<string, EloResult>):
         p.lonersStopped ?? '',
       ];
     });
-  return [headers, ...rows].map((r) => r.map(cell).join(',')).join('\n');
+  return [headers, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
 }

@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket-client';
 import type { MatchRecord, StatsPayload } from '@/lib/shared-types';
 import {
-  humanGames,
+  prepareGames,
   computePlayers,
   computeDuos,
   computeHeadToHead,
@@ -19,7 +19,13 @@ import { computeBadges } from '@/lib/stats-achievements';
 import { computeClutch } from '@/lib/stats-clutch';
 import { computeSessions } from '@/lib/stats-sessions';
 import { playersToCSV } from '@/lib/stats-csv';
+import { clearAdminKey, getAdminKey, promptAdminKey } from '@/lib/stats-admin-key';
 import SuperlativeCards from '@/components/stats/SuperlativeCards';
+import StatsFilters, {
+  EMPTY_FILTERS,
+  matchFilterFor,
+  type StatsFilterState,
+} from '@/components/stats/StatsFilters';
 import Leaderboard, { type RankedRow, type LeaderKey } from '@/components/stats/Leaderboard';
 import AchievementsStrip from '@/components/stats/AchievementsStrip';
 import DuosSection from '@/components/stats/DuosSection';
@@ -71,10 +77,8 @@ export default function StatsPage() {
   const [sortKey, setSortKey] = useState<LeaderKey>('rating');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  // Filters
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [source, setSource] = useState<'all' | 'app' | 'manual' | 'historical'>('all');
+  // Filters (date range + how the game was recorded)
+  const [filters, setFilters] = useState<StatsFilterState>(EMPTY_FILTERS);
   const [fullStats, setFullStats] = useState(true); // leaderboard: all stat columns (default on)
   const [showHands, setShowHands] = useState(false); // full hand-level data set (collapsed by default)
   const [showDealer, setShowDealer] = useState(false); // dealer analytics (loads heavy bid logs)
@@ -85,19 +89,25 @@ export default function StatsPage() {
   useEffect(() => setMounted(true), []);
 
   // Admin unlock: deleting games requires the shared admin key (checked server-
-  // side). Stored per-browser so an admin enters it once; delete controls stay
-  // hidden until unlocked. The real gate is on the server — this is just UX.
+  // side). Kept in sessionStorage (see stats-admin-key.ts) so an admin enters it
+  // once per tab; delete controls stay hidden until unlocked. The real gate is on
+  // the server — this is just UX.
   const [adminKey, setAdminKey] = useState<string | null>(null);
   useEffect(() => {
-    try {
-      setAdminKey(localStorage.getItem('euchre_admin_key'));
-    } catch {
-      /* localStorage unavailable — stays locked */
-    }
+    setAdminKey(getAdminKey());
   }, []);
 
+  // Ignore socket acks that land after this page has unmounted.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const load = useCallback(() => {
     getSocket().emit('stats:get', (payload) => {
+      if (!alive.current) return;
       setData(payload);
       setLoaded(true);
     });
@@ -107,23 +117,11 @@ export default function StatsPage() {
   }, [load]);
 
   function unlockAdmin() {
-    const entered = window.prompt('Enter the stats admin key to enable deleting games:');
-    if (entered == null) return; // cancelled
-    const k = entered.trim();
-    if (!k) return;
-    try {
-      localStorage.setItem('euchre_admin_key', k);
-    } catch {
-      /* ignore */
-    }
-    setAdminKey(k);
+    const k = promptAdminKey('Enter the stats admin key to enable deleting games:');
+    if (k) setAdminKey(k);
   }
   function lockAdmin() {
-    try {
-      localStorage.removeItem('euchre_admin_key');
-    } catch {
-      /* ignore */
-    }
+    clearAdminKey();
     setAdminKey(null);
   }
 
@@ -146,26 +144,18 @@ export default function StatsPage() {
 
   const allMatches = useMemo<MatchRecord[]>(() => data?.matches ?? [], [data]);
   // Apply the date/source filters before computing anything.
-  const matches = useMemo(
-    () =>
-      filterMatches(allMatches, {
-        // Parse the date-input values in LOCAL time (match timestamps are local
-        // epoch); Date.parse('YYYY-MM-DD') would treat them as UTC and shift days.
-        from: dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : undefined,
-        to: dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : undefined,
-        source: source === 'all' ? undefined : source,
-      }),
-    [allMatches, dateFrom, dateTo, source]
-  );
-  const human = useMemo(() => humanGames(matches), [matches]);
-  const players = useMemo(() => computePlayers(matches), [matches]);
-  const duos = useMemo(() => computeDuos(matches), [matches]);
-  const h2h = useMemo(() => computeHeadToHead(matches), [matches]);
-  const elo = useMemo(() => computeElo(matches), [matches]);
-  const badges = useMemo(() => computeBadges(matches, players, elo), [matches, players, elo]);
+  const matches = useMemo(() => filterMatches(allMatches, matchFilterFor(filters)), [allMatches, filters]);
+  // Run the human-only filter + name canonicalization ONCE per history change;
+  // every compute function recognises the prepared array and skips its own pass.
+  const human = useMemo(() => prepareGames(matches), [matches]);
+  const players = useMemo(() => computePlayers(human), [human]);
+  const duos = useMemo(() => computeDuos(human), [human]);
+  const h2h = useMemo(() => computeHeadToHead(human), [human]);
+  const elo = useMemo(() => computeElo(human), [human]);
+  const badges = useMemo(() => computeBadges(human, players, elo), [human, players, elo]);
   const improved = useMemo(() => mostImproved(elo), [elo]);
-  const clutch = useMemo(() => computeClutch(matches), [matches]);
-  const sessions = useMemo(() => computeSessions(matches), [matches]);
+  const clutch = useMemo(() => computeClutch(human), [human]);
+  const sessions = useMemo(() => computeSessions(human), [human]);
   const lastSession = sessions.length ? sessions[sessions.length - 1] : null;
 
   // Lowest-Elo player among the qualified set (gets the WFEPE card + seahorse).
@@ -407,7 +397,7 @@ export default function StatsPage() {
             }
           >
             {showHands ? (
-              <HandLevelData matches={matches} />
+              <HandLevelData matches={human} />
             ) : (
               <p className="text-white/45 text-sm">
                 Expand to explore the complete hand-by-hand data set — every hand’s bids, up-card,
@@ -461,65 +451,20 @@ export default function StatsPage() {
           </section>
 
           {/* Filters + actions */}
-          <section className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-wrap items-end gap-3">
-            <label className="text-xs text-white/60">
-              <span className="uppercase tracking-wider block mb-1">From</span>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 outline-none focus:border-gold text-white"
-              />
-            </label>
-            <label className="text-xs text-white/60">
-              <span className="uppercase tracking-wider block mb-1">To</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 outline-none focus:border-gold text-white"
-              />
-            </label>
-            <label className="text-xs text-white/60">
-              <span className="uppercase tracking-wider block mb-1">Games</span>
-              <select
-                value={source}
-                onChange={(e) => setSource(e.target.value as 'all' | 'app' | 'manual' | 'historical')}
-                className="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 outline-none focus:border-gold text-white"
-              >
-                <option value="all">All</option>
-                <option value="app">Online</option>
-                <option value="manual">In person</option>
-                <option value="historical">Historical</option>
-              </select>
-            </label>
-            {(dateFrom || dateTo || source !== 'all') && (
-              <button
-                onClick={() => {
-                  setDateFrom('');
-                  setDateTo('');
-                  setSource('all');
-                }}
-                className="text-xs text-white/60 hover:text-white border border-white/15 rounded-lg px-2.5 py-1.5"
-              >
-                Clear filters
-              </button>
-            )}
-            <div className="ml-auto flex gap-2">
-              <Link
-                href="/stats/compare"
-                className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
-              >
-                ⚖️ Compare
-              </Link>
-              <button
-                onClick={downloadCSV}
-                className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
-              >
-                ⬇️ CSV
-              </button>
-            </div>
-          </section>
+          <StatsFilters value={filters} onChange={setFilters}>
+            <Link
+              href="/stats/compare"
+              className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
+            >
+              ⚖️ Compare
+            </Link>
+            <button
+              onClick={downloadCSV}
+              className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
+            >
+              ⬇️ CSV
+            </button>
+          </StatsFilters>
 
           {/* Charts */}
           <Section
@@ -551,7 +496,7 @@ export default function StatsPage() {
             note="Which card ranks players call trump on — the round-1 up-card rank, or R2 for a round-2 named call"
           >
             {mounted ? (
-              <CallsByRank matches={matches} />
+              <CallsByRank matches={human} />
             ) : (
               <p className="text-white/40 text-sm">Loading…</p>
             )}
@@ -563,7 +508,7 @@ export default function StatsPage() {
             note="Which trump suits players like to call — and how those calls work out"
           >
             {mounted ? (
-              <CallsBySuit matches={matches} />
+              <CallsBySuit matches={human} />
             ) : (
               <p className="text-white/40 text-sm">Loading…</p>
             )}
@@ -584,7 +529,7 @@ export default function StatsPage() {
             }
           >
             {showDealer ? (
-              <DealerAnalytics matches={matches} />
+              <DealerAnalytics matches={human} />
             ) : (
               <p className="text-white/45 text-sm">
                 Expand to see how big the dealer advantage really is, who calls from where, and how
@@ -608,7 +553,7 @@ export default function StatsPage() {
             }
           >
             {showLuck ? (
-              <LuckIndex matches={matches} />
+              <LuckIndex matches={human} />
             ) : (
               <p className="text-white/45 text-sm">
                 Expand to settle the argument: who actually runs good. Separates card luck from

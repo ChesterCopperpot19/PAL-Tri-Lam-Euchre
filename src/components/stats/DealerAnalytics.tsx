@@ -3,12 +3,12 @@
 // rate by seat relative to the dealer, and stick-the-dealer outcomes. Needs the
 // full bid log for stuck detection, so it loads the heavy hand detail on mount.
 
+import { useMemo } from 'react';
 import type { MatchRecord } from '@/lib/shared-types';
 import { computeDealerStats, POSITION_LABELS } from '@/lib/stats-hands';
 import { useFullHands } from './useFullHands';
 import PlayerLink from './PlayerLink';
-
-const pct = (n: number) => `${Math.round(n * 100)}%`;
+import { pct } from '@/lib/stats-format';
 
 function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
   return (
@@ -29,7 +29,7 @@ const POSITION_TITLES = [
 
 export default function DealerAnalytics({ matches }: { matches: MatchRecord[] }) {
   const { detailed, loading } = useFullHands(matches);
-  const stats = computeDealerStats(detailed);
+  const stats = useMemo(() => computeDealerStats(detailed), [detailed]);
 
   if (stats.handsWithDealer === 0) {
     return (

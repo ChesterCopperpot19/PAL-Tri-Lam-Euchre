@@ -2,6 +2,9 @@ import type { RoomMember } from './shared-types';
 import type { SeatIndex, Team } from '@/server/engine/types';
 import { TEAM_OF } from '@/server/engine/types';
 
+/** Compass name for each absolute seat index, used when a seat has no member. */
+export const SEAT_NAME = ['South', 'West', 'North', 'East'] as const;
+
 /** "Alex & Hazel" — names of the two players on a team, or a fallback if a seat is empty. */
 export function teamName(members: RoomMember[], team: Team): string {
   const seats: SeatIndex[] = team === 'NS' ? [0, 2] : [1, 3];

@@ -1,7 +1,4 @@
-import { ALL_RANKS, Card, Rank, Suit } from './types';
-
-const RED_SUITS: Suit[] = ['H', 'D'];
-const BLACK_SUITS: Suit[] = ['C', 'S'];
+import { Card, Rank, Suit } from './types';
 
 /** Same-color suit (the "left bower" suit). */
 export function leftBowerSuit(trump: Suit): Suit {
@@ -81,6 +78,3 @@ export function trickWinner(
   }
   return best.seat;
 }
-
-/** Convenience: ranks ascending. Used by tests. */
-export const RANK_ASC: Rank[] = ALL_RANKS.slice();

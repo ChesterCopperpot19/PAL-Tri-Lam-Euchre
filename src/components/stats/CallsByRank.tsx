@@ -2,6 +2,7 @@
 // Trump calls broken down by the up-card rank ordered up (round 1), or "R2" for a
 // round-2 named call. Club-wide bar chart + a per-player heatmap table.
 
+import { useMemo } from 'react';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -23,7 +24,7 @@ const TICK = 'rgba(255,255,255,0.72)';
 const GRID = 'rgba(255,255,255,0.08)';
 
 export default function CallsByRank({ matches }: { matches: MatchRecord[] }) {
-  const { byRank, total, players } = computeCallRanks(matches);
+  const { byRank, total, players } = useMemo(() => computeCallRanks(matches), [matches]);
 
   if (total === 0) {
     return (

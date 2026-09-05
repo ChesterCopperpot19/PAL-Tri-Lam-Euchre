@@ -1,5 +1,6 @@
 'use client';
-import { useEffect } from 'react';
+import { useRef } from 'react';
+import { useModal } from '@/lib/useModal';
 
 function Rule({ t, children }: { t: string; children: React.ReactNode }) {
   return (
@@ -13,16 +14,12 @@ function Rule({ t, children }: { t: string; children: React.ReactNode }) {
 /** The house rules currently enforced by the game — readable mid-game so players
  *  can settle "which rules are we using?" questions on the spot. */
 export default function RulesModal({ onClose }: { onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useModal(onClose, { initialFocus: closeRef });
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label="House rules"
@@ -36,7 +33,7 @@ export default function RulesModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-display text-2xl text-gold">House Rules</h2>
           <button
-            autoFocus
+            ref={closeRef}
             onClick={onClose}
             className="text-white/70 hover:text-white text-sm bg-white/10 border border-white/15 rounded-lg px-3 py-1"
           >

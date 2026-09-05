@@ -1,18 +1,25 @@
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { applyAction, createGame } from './engine/game';
 import { chooseBotAction } from './engine/bot';
 import { redactState } from './engine/redact';
-import { roomManager, nextHostPlayerId, Room } from './rooms';
+import { roomManager, nextHostPlayerId, stripControlChars, Room } from './rooms';
 import {
   ClientToServerEvents,
   MatchRecord,
-  PlayerAllTime,
   PlayerMatchStat,
   RoomListEntry,
   RoomSnapshot,
   ServerToClientEvents,
 } from '@/lib/shared-types';
-import { TEAM_OF, type HandSummary, type SeatIndex } from './engine/types';
+import {
+  ALL_SUITS,
+  TEAM_OF,
+  type Action,
+  type HandSummary,
+  type SeatIndex,
+  type Suit,
+} from './engine/types';
 import { deleteMatch, getMatches, recordMatch } from './stats-store';
 import { buildManualMatch, validateManualInput } from '@/lib/manual-match';
 import { slimMatchForList } from '@/lib/stats-hands';
@@ -30,18 +37,132 @@ type Session = {
 };
 const sessions = new Map<string, Session>();
 
-// Light rate limit for the manual stat-write endpoints (per socket).
-const statWriteTimes = new Map<string, number[]>();
-function allowStatWrite(socketId: string): boolean {
-  const now = Date.now();
-  const recent = (statWriteTimes.get(socketId) ?? []).filter((t) => now - t < 60_000);
-  if (recent.length >= 20) return false;
-  recent.push(now);
-  statWriteTimes.set(socketId, recent);
-  return true;
+// ---------------------------------------------------------------------------
+// Input validation. Everything a client sends is untrusted JSON: a missing or
+// wrong-typed field used to throw inside the listener, and socket.io dispatches
+// listeners with no try/catch, so one bad packet crashed the whole server.
+// ---------------------------------------------------------------------------
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+const isSeat = (v: unknown): v is SeatIndex => v === 0 || v === 1 || v === 2 || v === 3;
+const isSuit = (v: unknown): v is Suit => typeof v === 'string' && (ALL_SUITS as string[]).includes(v);
+/** Card ids are `${rank}${suit}`, e.g. "10H" — the engine still checks it's in hand. */
+const isCardId = (v: unknown): v is string => typeof v === 'string' && /^(9|10|J|Q|K|A)[HDCS]$/.test(v);
+const isPlayerId = (v: unknown): v is string => typeof v === 'string' && /^[\w-]{1,64}$/.test(v);
+const isRoomCode = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9]{0,8}$/.test(v);
+
+type Ack<T> = (res: T) => void;
+/** Clients may omit the ack callback; never call something that isn't a function. */
+function safeAck<T>(ack: unknown): Ack<T> {
+  return typeof ack === 'function' ? (ack as Ack<T>) : () => {};
 }
 
-function snapshot(room: Room, viewerSeat: 0 | 1 | 2 | 3 | null): RoomSnapshot {
+/** Register a listener that can never take the process down: sync throws are
+ *  caught, returned promises get a `.catch`. */
+function on<E extends keyof ClientToServerEvents>(
+  socket: S,
+  event: E,
+  handler: (...args: Parameters<ClientToServerEvents[E]>) => void | Promise<void>
+): void {
+  const wrapped = (...args: unknown[]) => {
+    try {
+      const r = handler(...(args as Parameters<ClientToServerEvents[E]>));
+      if (r && typeof (r as Promise<void>).catch === 'function') {
+        (r as Promise<void>).catch((e) => logHandlerError(event, e));
+      }
+    } catch (e) {
+      logHandlerError(event, e);
+    }
+  };
+  // socket.io's overloads can't express a generic wrapper; the cast is confined here.
+  (socket as unknown as { on: (ev: string, fn: (...a: unknown[]) => void) => void }).on(event, wrapped);
+}
+
+function logHandlerError(event: string, e: unknown) {
+  // eslint-disable-next-line no-console
+  console.error(`socket handler ${event} failed:`, e instanceof Error ? e.message : e);
+}
+
+// ---------------------------------------------------------------------------
+// Per-IP limiters. Keyed by client address (not socket id) so reconnecting
+// doesn't reset the budget. Render sits behind a proxy → honour X-Forwarded-For.
+// ---------------------------------------------------------------------------
+
+function clientIp(socket: S): string {
+  const xff = socket.handshake.headers['x-forwarded-for'];
+  const first = (Array.isArray(xff) ? xff[0] : xff)?.split(',')[0]?.trim();
+  return first || socket.handshake.address || 'unknown';
+}
+
+class WindowLimiter {
+  private hits = new Map<string, number[]>();
+  constructor(private max: number, private windowMs: number) {}
+  allow(key: string): boolean {
+    const now = Date.now();
+    const recent = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
+    if (recent.length >= this.max) {
+      this.hits.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    this.hits.set(key, recent);
+    return true;
+  }
+  prune() {
+    const now = Date.now();
+    for (const [k, v] of this.hits) {
+      if (!v.some((t) => now - t < this.windowMs)) this.hits.delete(k);
+    }
+  }
+}
+
+const statWriteLimiter = new WindowLimiter(20, 60_000); // manual entries + deletes
+const statReadLimiter = new WindowLimiter(30, 60_000); // full-history reads
+const roomCreateLimiter = new WindowLimiter(10, 60_000);
+
+/** Failed admin-key attempts per IP with exponential lockout (caps at 15 min). */
+const authFailures = new Map<string, { count: number; lockedUntil: number }>();
+function authLocked(ip: string): boolean {
+  const f = authFailures.get(ip);
+  return !!f && f.lockedUntil > Date.now();
+}
+function noteAuthFailure(ip: string) {
+  const f = authFailures.get(ip) ?? { count: 0, lockedUntil: 0 };
+  f.count++;
+  const lockMs = Math.min(1000 * 2 ** f.count, 15 * 60_000);
+  f.lockedUntil = Date.now() + lockMs;
+  authFailures.set(ip, f);
+  // eslint-disable-next-line no-console
+  console.warn(`stats admin auth failed from ${ip} (attempt ${f.count}, locked ${lockMs}ms)`);
+}
+function noteAuthSuccess(ip: string) {
+  authFailures.delete(ip);
+}
+
+setInterval(() => {
+  statWriteLimiter.prune();
+  statReadLimiter.prune();
+  roomCreateLimiter.prune();
+  const now = Date.now();
+  for (const [k, v] of authFailures) if (v.lockedUntil < now - 60 * 60_000) authFailures.delete(k);
+}, 5 * 60_000).unref();
+
+// ---------------------------------------------------------------------------
+// Seat reclaim tokens. A playerId is visible to everyone in the room (it's in
+// the snapshot), so on its own it must never be enough to take over a seat.
+// ---------------------------------------------------------------------------
+
+const newToken = () => randomBytes(16).toString('hex');
+function tokenMatches(expected: string, given: unknown): boolean {
+  if (!expected || typeof given !== 'string') return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(given);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+// ---------------------------------------------------------------------------
+
+function snapshot(room: Room, viewerSeat: SeatIndex | null): RoomSnapshot {
   return {
     code: room.code,
     members: roomManager.members(room),
@@ -57,13 +178,18 @@ function broadcast(io: IO, room: Room) {
   for (let i = 0; i < 4; i++) {
     const seat = room.seats[i];
     if (seat?.socketId) {
-      io.to(seat.socketId).emit('room:snapshot', snapshot(room, i as 0 | 1 | 2 | 3));
+      io.to(seat.socketId).emit('room:snapshot', snapshot(room, i as SeatIndex));
     }
   }
   // Send each spectator the spectator view (no hands).
   for (const sp of room.spectators) {
     io.to(sp.socketId).emit('room:snapshot', snapshot(room, null));
   }
+  // Track trick completion here (not only when a bot is on turn) so the
+  // post-trick animation delay fires for the right move.
+  const currCount = room.state.completedTricks.length;
+  room.trickJustCompleted = currCount > room.lastTrickCount;
+  room.lastTrickCount = currCount;
   // Possibly schedule a bot move.
   scheduleBotTick(io, room);
   // Auto-advance from HAND_END after the score has been shown.
@@ -84,6 +210,26 @@ function broadcast(io: IO, room: Room) {
       // eslint-disable-next-line no-console
       console.error('failed to build match record:', (e as Error).message);
     }
+  }
+}
+
+/** Apply an engine action, emit its events, rebroadcast. Errors go to `onError`
+ *  (a `room:error` for a human, the log for a timer). Returns whether it applied. */
+function applyAndBroadcast(
+  io: IO,
+  room: Room,
+  action: Action,
+  onError: (msg: string) => void
+): boolean {
+  try {
+    const { state, events } = applyAction(room.state, action);
+    room.state = state;
+    events.forEach((e) => io.to(room.code).emit('room:event', e));
+    broadcast(io, room);
+    return true;
+  } catch (e) {
+    onError((e as Error).message);
+    return false;
   }
 }
 
@@ -153,48 +299,6 @@ function buildMatchRecord(room: Room): MatchRecord {
   };
 }
 
-/** Aggregate all-time stats across matches — humans only, sorted by wins. */
-function aggregatePlayers(matches: MatchRecord[]): PlayerAllTime[] {
-  const map = new Map<string, PlayerAllTime>();
-  for (const m of matches) {
-    for (const p of m.players) {
-      if (p.isBot) continue; // all-time leaderboard is humans only
-      const key = p.name.trim();
-      if (!key) continue;
-      let agg = map.get(key);
-      if (!agg) {
-        agg = {
-          name: key,
-          games: 0,
-          wins: 0,
-          tricks: 0,
-          defensiveTricks: 0,
-          handsCalled: 0,
-          callsWon: 0,
-          euchres: 0,
-          marches: 0,
-          loneCalled: 0,
-          loneWon: 0,
-        };
-        map.set(key, agg);
-      }
-      agg.games++;
-      if (p.team === m.winnerTeam) agg.wins++;
-      agg.tricks += p.tricks;
-      agg.defensiveTricks += p.defensiveTricks;
-      agg.handsCalled += p.handsCalled;
-      agg.callsWon += p.callsWon;
-      agg.euchres += p.euchres;
-      agg.marches += p.marches;
-      agg.loneCalled += p.loneCalled;
-      agg.loneWon += p.loneWon;
-    }
-  }
-  return Array.from(map.values()).sort(
-    (a, b) => b.wins - a.wins || b.games - a.games || b.tricks - a.tricks
-  );
-}
-
 const HAND_END_AUTO_DELAY_MS = 6000;
 
 function scheduleAutoNextHand(io: IO, room: Room) {
@@ -207,15 +311,10 @@ function scheduleAutoNextHand(io: IO, room: Room) {
     room.handEndTimer = null;
     if (!roomManager.get(room.code)) return; // room gone
     if (room.state.phase !== 'HAND_END') return; // already advanced
-    try {
-      const { state, events } = applyAction(room.state, { type: 'START_HAND' });
-      room.state = state;
-      events.forEach((e) => io.to(room.code).emit('room:event', e));
-      broadcast(io, room);
-    } catch (e) {
+    applyAndBroadcast(io, room, { type: 'START_HAND' }, (msg) => {
       // eslint-disable-next-line no-console
-      console.error(`auto-next-hand failed in room ${room.code}:`, (e as Error).message);
-    }
+      console.error(`auto-next-hand failed in room ${room.code}:`, msg);
+    });
   }, HAND_END_AUTO_DELAY_MS);
 }
 
@@ -223,46 +322,43 @@ const BOT_DELAY_MS = 700;
 /** After a trick is taken we delay so the client animation has time to play. */
 const POST_TRICK_DELAY_MS = 2100;
 
+const ACTIONABLE_PHASES = new Set(['BIDDING_1', 'BIDDING_2', 'DEALER_DISCARD', 'PLAYING']);
+
 function scheduleBotTick(io: IO, room: Room) {
   if (room.botTimer) {
     clearTimeout(room.botTimer);
     room.botTimer = null;
   }
   // Bots only act in turn-based phases.
-  const phase = room.state.phase;
-  const actionable =
-    phase === 'BIDDING_1' ||
-    phase === 'BIDDING_2' ||
-    phase === 'DEALER_DISCARD' ||
-    phase === 'PLAYING';
-  if (!actionable) return;
+  if (!ACTIONABLE_PHASES.has(room.state.phase)) return;
   const turnSeat = room.state.turn;
   const seated = room.seats[turnSeat];
   if (!seated || !seated.isBot) return;
   // Never act for a sitting-out seat. The engine no longer parks the turn on one:
   // a sitting-out dealer's discard is resolved at order-up time (see BID_ORDER).
-  if (room.state.sittingOut.includes(turnSeat as 0 | 1 | 2 | 3)) return;
+  if (room.state.sittingOut.includes(turnSeat)) return;
 
-  // Detect: did a trick just complete? (completedTricks grew since last call.)
-  const prevCount = room.lastTrickCount;
-  const currCount = room.state.completedTricks.length;
-  room.lastTrickCount = currCount;
-  const justWonTrick = currCount > prevCount;
-  const delay = justWonTrick ? POST_TRICK_DELAY_MS : BOT_DELAY_MS;
+  const delay = room.trickJustCompleted ? POST_TRICK_DELAY_MS : BOT_DELAY_MS;
 
   room.botTimer = setTimeout(() => {
     room.botTimer = null;
     if (!roomManager.get(room.code)) return; // room gone
+    // Re-validate: still this bot's turn in an actionable phase.
+    if (!ACTIONABLE_PHASES.has(room.state.phase) || room.state.turn !== turnSeat) return;
+    const s = room.seats[turnSeat];
+    if (!s || !s.isBot) return;
+    let action: Action;
     try {
-      const action = chooseBotAction(room.state, turnSeat as 0 | 1 | 2 | 3);
-      const { state, events } = applyAction(room.state, action);
-      room.state = state;
-      events.forEach((e) => io.to(room.code).emit('room:event', e));
-      broadcast(io, room);
+      action = chooseBotAction(room.state, turnSeat);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(`bot error in room ${room.code}:`, (e as Error).message);
+      return;
     }
+    applyAndBroadcast(io, room, action, (msg) => {
+      // eslint-disable-next-line no-console
+      console.error(`bot error in room ${room.code}:`, msg);
+    });
   }, delay);
 }
 
@@ -271,8 +367,6 @@ function scheduleBotTick(io: IO, room: Room) {
 // grace (enough to reconnect from a refresh / dropped wifi) a bot plays their
 // turn so the table doesn't freeze waiting on someone who's gone.
 const DISCONNECTED_TURN_MS = 20_000;
-
-const ACTIONABLE_PHASES = new Set(['BIDDING_1', 'BIDDING_2', 'DEALER_DISCARD', 'PLAYING']);
 
 function scheduleHumanTurnTimer(io: IO, room: Room) {
   if (room.turnTimer) {
@@ -295,16 +389,18 @@ function scheduleHumanTurnTimer(io: IO, room: Room) {
     if (!ACTIONABLE_PHASES.has(room.state.phase) || room.state.turn !== turnSeat) return;
     const s = room.seats[turnSeat];
     if (!s || s.isBot) return;
+    let action: Action;
     try {
-      const action = chooseBotAction(room.state, turnSeat);
-      const { state, events } = applyAction(room.state, action);
-      room.state = state;
-      events.forEach((e) => io.to(room.code).emit('room:event', e));
-      broadcast(io, room);
+      action = chooseBotAction(room.state, turnSeat);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(`auto-play (absent human) failed in room ${room.code}:`, (e as Error).message);
+      return;
     }
+    applyAndBroadcast(io, room, action, (msg) => {
+      // eslint-disable-next-line no-console
+      console.error(`auto-play (absent human) failed in room ${room.code}:`, msg);
+    });
   }, DISCONNECTED_TURN_MS);
 }
 
@@ -318,6 +414,18 @@ function makeBotName(usedNames: Set<string>): string {
 
 function botIdFor(seat: number): string {
   return `bot-${seat}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function botSeat(room: Room, seat: SeatIndex) {
+  const used = new Set(room.seats.filter((s) => s).map((s) => s!.name));
+  return {
+    playerId: botIdFor(seat),
+    name: makeBotName(used),
+    token: '', // bots can never be reclaimed via room:join
+    socketId: null,
+    disconnectedAt: null,
+    isBot: true,
+  };
 }
 
 function err(socket: S, msg: string) {
@@ -334,12 +442,40 @@ function getSessionRoom(socket: S): { sess: Session; room: Room } | null {
 
 function getSeatedSession(
   socket: S
-): { sess: Session; room: Room; seat: 0 | 1 | 2 | 3 } | null {
+): { sess: Session; room: Room; seat: SeatIndex } | null {
   const ctx = getSessionRoom(socket);
   if (!ctx) return null;
   const seat = roomManager.findSeat(ctx.room, ctx.sess.playerId);
   if (seat == null) return null;
   return { ...ctx, seat };
+}
+
+/** Host-only lobby action guard. Returns the room or emits the reason. */
+function hostLobbyRoom(socket: S, what: string): Room | null {
+  const ctx = getSessionRoom(socket);
+  if (!ctx) {
+    err(socket, 'not in a room');
+    return null;
+  }
+  const { room, sess } = ctx;
+  if (room.hostPlayerId !== sess.playerId) {
+    err(socket, 'host only');
+    return null;
+  }
+  if (room.state.phase !== 'LOBBY') {
+    err(socket, `cannot ${what} mid-game`);
+    return null;
+  }
+  return room;
+}
+
+/** Seated-player game action: validate, apply, broadcast; errors → room:error. */
+function playerAction(socket: S, build: (seat: SeatIndex) => Action | null, io: IO) {
+  const ctx = getSeatedSession(socket);
+  if (!ctx) return err(socket, 'spectators cannot play');
+  const action = build(ctx.seat);
+  if (!action) return err(socket, 'invalid request');
+  applyAndBroadcast(io, ctx.room, action, (msg) => err(socket, msg));
 }
 
 function listRooms(): RoomListEntry[] {
@@ -373,39 +509,38 @@ function listRooms(): RoomListEntry[] {
 
 export function attachHandlers(io: IO) {
   io.on('connection', (socket: S) => {
-    socket.on('rooms:list', (ack) => {
+    on(socket, 'rooms:list', (rawAck) => {
+      const ack = safeAck<RoomListEntry[]>(rawAck);
       try {
         ack(listRooms());
-      } catch (e) {
+      } catch {
         ack([]);
       }
     });
 
-    socket.on('stats:get', async (ack) => {
+    on(socket, 'stats:get', async (rawAck) => {
+      const ack = safeAck<Parameters<typeof rawAck>[0]>(rawAck);
+      if (!statReadLimiter.allow(clientIp(socket))) {
+        return ack({ matches: [], totalMatches: 0 });
+      }
       try {
         const all = await getMatches();
         // Most recent first, with each hand slimmed to its summary. The dashboard
-        // derives every default metric (leaderboard, duos, head-to-head, streaks,
-        // calls-by-rank, the hand table) from summaries; the heavy per-card
-        // bids/tricks load on demand via `stats:hands` when the full data set is
-        // expanded. Keeps this common payload small as the hand log grows.
+        // derives every metric from summaries; the heavy per-card bids/tricks load
+        // on demand via `stats:hands` when the full data set is expanded.
         const recent = all.slice().reverse().map(slimMatchForList);
-        ack({
-          matches: recent,
-          players: aggregatePlayers(all),
-          totalMatches: all.length,
-        });
+        ack({ matches: recent, totalMatches: all.length });
       } catch (e) {
         // eslint-disable-next-line no-console
         console.error('stats:get failed:', (e as Error).message);
-        ack({ matches: [], players: [], totalMatches: 0 });
+        ack({ matches: [], totalMatches: 0 });
       }
     });
 
     // Heavy per-hand detail (bids + tricks) for the expandable hand-level view.
-    // Read-only, same exposure as stats:get; fetched only when a client opens the
-    // full data set, so the default dashboard payload stays small.
-    socket.on('stats:hands', async (ack) => {
+    on(socket, 'stats:hands', async (rawAck) => {
+      const ack = safeAck<Parameters<typeof rawAck>[0]>(rawAck);
+      if (!statReadLimiter.allow(clientIp(socket))) return ack({ games: [] });
       try {
         const all = await getMatches();
         const games = all
@@ -419,17 +554,29 @@ export function attachHandlers(io: IO) {
       }
     });
 
-    // Log an in-person game manually. All four players are humans → it counts
-    // in the dashboard alongside app-played games.
-    socket.on('stats:add', async (payload, ack) => {
+    // Log an in-person game manually. Gated behind the shared stats admin key —
+    // the leaderboard is the club's permanent record.
+    on(socket, 'stats:add', async (payload, rawAck) => {
+      const ack = safeAck<Parameters<typeof rawAck>[0]>(rawAck);
+      const ip = clientIp(socket);
+      if (!statWriteLimiter.allow(ip)) {
+        return ack({ ok: false, error: 'Too many entries in a short time — give it a moment.' });
+      }
+      if (!isObj(payload)) return ack({ ok: false, error: 'Missing data.' });
+      if (authLocked(ip)) {
+        return ack({ ok: false, error: 'Too many failed key attempts — try again later.', code: 'auth' });
+      }
+      const { key, ...input } = payload;
+      if (!isStatsAdmin(key)) {
+        noteAuthFailure(ip);
+        return ack({ ok: false, error: 'Not authorized — enter the admin key to log games.', code: 'auth' });
+      }
+      noteAuthSuccess(ip);
       try {
-        if (!allowStatWrite(socket.id)) {
-          return ack({ ok: false, error: 'Too many entries in a short time — give it a moment.' });
-        }
-        const err = validateManualInput(payload);
-        if (err) return ack({ ok: false, error: err });
+        const invalid = validateManualInput(input);
+        if (invalid) return ack({ ok: false, error: invalid });
         const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        await recordMatch(buildManualMatch(payload, id, Date.now()));
+        await recordMatch(buildManualMatch(input, id, Date.now()));
         ack({ ok: true });
       } catch (e) {
         // eslint-disable-next-line no-console
@@ -439,16 +586,27 @@ export function attachHandlers(io: IO) {
     });
 
     // Delete a recorded game (e.g. a mistaken manual entry).
-    socket.on('stats:delete', async ({ id, key }, ack) => {
+    on(socket, 'stats:delete', async (payload, rawAck) => {
+      const ack = safeAck<Parameters<typeof rawAck>[0]>(rawAck);
+      const ip = clientIp(socket);
+      if (!statWriteLimiter.allow(ip)) {
+        return ack({ ok: false, error: 'Too many requests — give it a moment.' });
+      }
+      if (!isObj(payload)) return ack({ ok: false, error: 'Missing game id.' });
+      if (authLocked(ip)) {
+        return ack({ ok: false, error: 'Too many failed key attempts — try again later.', code: 'auth' });
+      }
+      if (!isStatsAdmin(payload.key)) {
+        noteAuthFailure(ip);
+        return ack({ ok: false, error: 'Not authorized — enter the admin key to delete games.', code: 'auth' });
+      }
+      noteAuthSuccess(ip);
+      const id = payload.id;
+      if (typeof id !== 'string' || !id || id.length > 64) return ack({ ok: false, error: 'Missing game id.' });
       try {
-        if (!allowStatWrite(socket.id)) {
-          return ack({ ok: false, error: 'Too many requests — give it a moment.' });
-        }
-        if (!isStatsAdmin(key)) {
-          return ack({ ok: false, error: 'Not authorized — enter the admin key to delete games.', code: 'auth' });
-        }
-        if (!id || typeof id !== 'string') return ack({ ok: false, error: 'Missing game id.' });
         const removed = await deleteMatch(id);
+        // eslint-disable-next-line no-console
+        console.log(`stats: match ${id} ${removed ? 'deleted' : 'not found'} (from ${ip})`);
         ack(removed ? { ok: true } : { ok: false, error: 'That game was not found.' });
       } catch (e) {
         // eslint-disable-next-line no-console
@@ -457,94 +615,113 @@ export function attachHandlers(io: IO) {
       }
     });
 
-    socket.on('room:join', (payload, ack) => {
-      try {
-        const code = (payload.code || '').toUpperCase().trim();
-        const name = (payload.name || 'Player').slice(0, 24).trim() || 'Player';
-        const playerId = payload.playerId;
-        if (!playerId) return ack({ ok: false, error: 'missing playerId' });
+    on(socket, 'room:join', (payload, rawAck) => {
+      const ack = safeAck<Parameters<typeof rawAck>[0]>(rawAck);
+      if (!isObj(payload)) return ack({ ok: false, error: 'bad request' });
+      if (!isRoomCode(payload.code ?? '')) return ack({ ok: false, error: 'Room not found' });
+      const code = ((payload.code as string) || '').toUpperCase().trim();
+      const rawName = typeof payload.name === 'string' ? payload.name : '';
+      const name = stripControlChars(rawName).slice(0, 24).trim() || 'Player';
+      const playerId = payload.playerId;
+      if (!isPlayerId(playerId)) return ack({ ok: false, error: 'missing playerId' });
 
-        let room = code ? roomManager.get(code) : undefined;
-        if (code && !room) return ack({ ok: false, error: 'Room not found' });
-        if (!room) {
-          room = roomManager.create(playerId);
+      let room = code ? roomManager.get(code) : undefined;
+      if (code && !room) return ack({ ok: false, error: 'Room not found' });
+      if (!room) {
+        if (!roomCreateLimiter.allow(clientIp(socket))) {
+          return ack({ ok: false, error: 'You are creating rooms too quickly — wait a minute.' });
         }
+        try {
+          room = roomManager.create(playerId);
+        } catch (e) {
+          return ack({ ok: false, error: (e as Error).message });
+        }
+      }
 
-        // Clean any stale registrations of this playerId across the room.
-        const existingSeat = roomManager.findSeat(room, playerId);
-        const existingSpec = room.spectators.findIndex((sp) => sp.playerId === playerId);
+      // Existing registrations of this playerId in the room. Reclaiming one
+      // requires the token we handed out at first join — the playerId alone is
+      // public (it's in every snapshot) and must not be enough.
+      const existingSeat = roomManager.findSeat(room, playerId);
+      const existingSpec = room.spectators.findIndex((sp) => sp.playerId === playerId);
+      const existing =
+        existingSeat != null ? room.seats[existingSeat] : existingSpec >= 0 ? room.spectators[existingSpec] : null;
+      let token: string;
+      if (existing) {
+        if (!tokenMatches(existing.token, payload.token)) {
+          return ack({ ok: false, error: 'That seat belongs to another connection.' });
+        }
+        token = existing.token;
+      } else {
+        token = newToken();
+      }
 
-        if (payload.asSpectator) {
-          // Remove any existing seat (only allowed in lobby).
-          if (existingSeat != null) {
-            if (room.state.phase !== 'LOBBY') {
-              return ack({
-                ok: false,
-                error: 'Cannot move to spectator mid-hand',
-              });
-            }
-            room.seats[existingSeat] = null;
+      if (payload.asSpectator) {
+        // Remove any existing seat (only allowed in lobby).
+        if (existingSeat != null) {
+          if (room.state.phase !== 'LOBBY') {
+            return ack({ ok: false, error: 'Cannot move to spectator mid-hand' });
           }
-          if (existingSpec >= 0) room.spectators.splice(existingSpec, 1);
-          room.spectators.push({ playerId, name, socketId: socket.id });
+          room.seats[existingSeat] = null;
+        }
+        if (existingSpec >= 0) room.spectators.splice(existingSpec, 1);
+        room.spectators.push({ playerId, name, token, socketId: socket.id });
+      } else {
+        // Player intent.
+        if (existingSpec >= 0) room.spectators.splice(existingSpec, 1);
+        if (existingSeat != null) {
+          // Reconnect: just update name + socket.
+          room.seats[existingSeat] = {
+            playerId,
+            name,
+            token,
+            socketId: socket.id,
+            disconnectedAt: null,
+            isBot: false,
+          };
         } else {
-          // Player intent.
-          if (existingSpec >= 0) room.spectators.splice(existingSpec, 1);
-          if (existingSeat != null) {
-            // Reconnect: just update name + socket.
-            room.seats[existingSeat] = {
+          const seatIdx = roomManager.firstOpenSeat(room);
+          if (seatIdx == null) {
+            // Auto-fallback to spectator if room is full.
+            room.spectators.push({ playerId, name, token, socketId: socket.id });
+          } else {
+            room.seats[seatIdx] = {
               playerId,
               name,
+              token,
               socketId: socket.id,
               disconnectedAt: null,
               isBot: false,
             };
-          } else {
-            const seatIdx = roomManager.firstOpenSeat(room);
-            if (seatIdx == null) {
-              // Auto-fallback to spectator if room is full.
-              room.spectators.push({ playerId, name, socketId: socket.id });
-            } else {
-              room.seats[seatIdx] = {
-                playerId,
-                name,
-                socketId: socket.id,
-                disconnectedAt: null,
-                isBot: false,
-              };
-            }
           }
         }
-
-        // Repair a lost host: if whoever is on record no longer holds a seat, hand
-        // it to a seated human. Only fires when the recorded host is unseated, so it
-        // never steals from a seated host — and it rescues rooms whose hostPlayerId
-        // was emptied when the last host left, which left nobody able to add bots.
-        if (!room.seats.some((s) => s && !s.isBot && s.playerId === room.hostPlayerId)) {
-          const repaired = nextHostPlayerId(room);
-          if (repaired) room.hostPlayerId = repaired;
-        }
-
-        sessions.set(socket.id, {
-          roomCode: room.code,
-          playerId,
-          name,
-          isSpectator: roomManager.findSeat(room, playerId) == null,
-        });
-        socket.join(room.code);
-
-        // Send chat history to the joiner.
-        for (const m of room.chatLog) socket.emit('chat:msg', m);
-
-        const seat = roomManager.findSeat(room, playerId);
-        ack({ ok: true, snapshot: snapshot(room, seat) });
-        broadcast(io, room);
-      } catch (e) {
-        ack({ ok: false, error: (e as Error).message });
       }
+
+      // Repair a lost host: if whoever is on record no longer holds a seat, hand
+      // it to a seated human. Only fires when the recorded host is unseated, so it
+      // never steals from a seated host — and it rescues rooms whose hostPlayerId
+      // was emptied when the last host left, which left nobody able to add bots.
+      if (!room.seats.some((s) => s && !s.isBot && s.playerId === room.hostPlayerId)) {
+        const repaired = nextHostPlayerId(room);
+        if (repaired) room.hostPlayerId = repaired;
+      }
+
+      sessions.set(socket.id, {
+        roomCode: room.code,
+        playerId,
+        name,
+        isSpectator: roomManager.findSeat(room, playerId) == null,
+      });
+      socket.join(room.code);
+
+      // Send chat history to the joiner.
+      for (const m of room.chatLog) socket.emit('chat:msg', m);
+
+      const seat = roomManager.findSeat(room, playerId);
+      ack({ ok: true, snapshot: snapshot(room, seat), token });
+      broadcast(io, room);
     });
 
-    socket.on('room:start', () => {
+    on(socket, 'room:start', () => {
       // Any seated player can start once the table is full — host-gating this just
       // stranded tables whose host had drifted to someone else (or to nobody).
       const ctx = getSeatedSession(socket);
@@ -552,33 +729,19 @@ export function attachHandlers(io: IO) {
       const { room } = ctx;
       if (!room.seats.every((s) => !!s)) return err(socket, 'need 4 players');
       if (room.state.phase !== 'LOBBY') return err(socket, 'already started');
-      try {
-        const { state, events } = applyAction(room.state, { type: 'START_HAND' });
-        room.state = state;
-        room.startedTs = Date.now();
-        events.forEach((e) => io.to(room.code).emit('room:event', e));
-        broadcast(io, room);
-      } catch (e) {
-        err(socket, (e as Error).message);
-      }
+      room.startedTs = Date.now();
+      applyAndBroadcast(io, room, { type: 'START_HAND' }, (msg) => err(socket, msg));
     });
 
-    socket.on('room:nextHand', () => {
+    on(socket, 'room:nextHand', () => {
       const ctx = getSeatedSession(socket);
       if (!ctx) return err(socket, 'only seated players can advance');
       const { room } = ctx;
       if (room.state.phase !== 'HAND_END') return err(socket, 'no hand to advance');
-      try {
-        const { state, events } = applyAction(room.state, { type: 'START_HAND' });
-        room.state = state;
-        events.forEach((e) => io.to(room.code).emit('room:event', e));
-        broadcast(io, room);
-      } catch (e) {
-        err(socket, (e as Error).message);
-      }
+      applyAndBroadcast(io, room, { type: 'START_HAND' }, (msg) => err(socket, msg));
     });
 
-    socket.on('room:rematch', () => {
+    on(socket, 'room:rematch', () => {
       // Reset a finished game back to the lobby, keeping every seat (players +
       // bots) so the same group can play again. The lobby lets people confirm
       // seats / swap bots before the host starts the next game.
@@ -586,26 +749,23 @@ export function attachHandlers(io: IO) {
       if (!ctx) return err(socket, 'only players can rematch');
       const { room } = ctx;
       if (room.state.phase !== 'GAME_OVER') return err(socket, 'game is not over');
-      if (room.botTimer) {
-        clearTimeout(room.botTimer);
-        room.botTimer = null;
-      }
-      if (room.handEndTimer) {
-        clearTimeout(room.handEndTimer);
-        room.handEndTimer = null;
-      }
-      if (room.turnTimer) {
-        clearTimeout(room.turnTimer);
-        room.turnTimer = null;
+      for (const key of ['botTimer', 'handEndTimer', 'turnTimer'] as const) {
+        const t = room[key];
+        if (t) clearTimeout(t);
+        room[key] = null;
       }
       room.state = createGame();
       room.statsRecorded = false;
       room.lastTrickCount = 0;
+      room.trickJustCompleted = false;
       io.to(room.code).emit('room:event', 'rematch');
       broadcast(io, room);
     });
 
-    socket.on('room:promote', ({ playerId, seat }) => {
+    on(socket, 'room:promote', (payload) => {
+      if (!isObj(payload)) return err(socket, 'invalid request');
+      const { playerId, seat } = payload;
+      if (!isSeat(seat) || !isPlayerId(playerId)) return err(socket, 'invalid request');
       const ctx = getSessionRoom(socket);
       if (!ctx) return err(socket, 'not in a room');
       const { room, sess } = ctx;
@@ -619,36 +779,25 @@ export function attachHandlers(io: IO) {
       room.seats[seat] = {
         playerId: sp.playerId,
         name: sp.name,
+        token: sp.token,
         socketId: sp.socketId,
         disconnectedAt: null,
         isBot: false,
       };
       const promoSession = Array.from(sessions.entries()).find(
-        ([, v]) => v.playerId === sp.playerId
+        ([, v]) => v.playerId === sp.playerId && v.roomCode === room.code
       );
       if (promoSession) sessions.set(promoSession[0], { ...promoSession[1], isSpectator: false });
       broadcast(io, room);
     });
 
-    function addBotToSeat(room: Room, seat: 0 | 1 | 2 | 3): void {
-      const used = new Set(room.seats.filter((s) => s).map((s) => s!.name));
-      const name = makeBotName(used);
-      room.seats[seat] = {
-        playerId: botIdFor(seat),
-        name,
-        socketId: null,
-        disconnectedAt: null,
-        isBot: true,
-      };
-    }
-
-    socket.on('room:moveSeat', ({ seat: targetSeat }) => {
+    on(socket, 'room:moveSeat', (payload) => {
+      if (!isObj(payload) || !isSeat(payload.seat)) return err(socket, 'invalid seat');
+      const targetSeat = payload.seat;
       const ctx = getSessionRoom(socket);
       if (!ctx) return err(socket, 'not in a room');
       const { room, sess } = ctx;
-      if (room.state.phase !== 'LOBBY')
-        return err(socket, 'cannot change seats mid-game');
-      if (targetSeat < 0 || targetSeat > 3) return err(socket, 'invalid seat');
+      if (room.state.phase !== 'LOBBY') return err(socket, 'cannot change seats mid-game');
       const currentSeat = roomManager.findSeat(room, sess.playerId);
       if (currentSeat == null) return err(socket, 'spectators cannot move seats');
       if (currentSeat === targetSeat) return; // no-op
@@ -659,154 +808,79 @@ export function attachHandlers(io: IO) {
       broadcast(io, room);
     });
 
-    socket.on('room:addBot', ({ seat }) => {
-      const ctx = getSessionRoom(socket);
-      if (!ctx) return err(socket, 'not in a room');
-      const { room, sess } = ctx;
-      if (room.hostPlayerId !== sess.playerId) return err(socket, 'host only');
-      if (room.state.phase !== 'LOBBY') return err(socket, 'cannot add bot mid-game');
-      let target: 0 | 1 | 2 | 3 | null = seat ?? null;
-      if (target == null) target = roomManager.firstOpenSeat(room);
+    on(socket, 'room:addBot', (payload) => {
+      const wanted = isObj(payload) ? payload.seat : undefined;
+      if (wanted !== undefined && wanted !== null && !isSeat(wanted)) return err(socket, 'invalid seat');
+      const room = hostLobbyRoom(socket, 'add bot');
+      if (!room) return;
+      const target = isSeat(wanted) ? wanted : roomManager.firstOpenSeat(room);
       if (target == null) return err(socket, 'no open seats');
       if (room.seats[target]) return err(socket, 'seat already taken');
-      addBotToSeat(room, target);
+      room.seats[target] = botSeat(room, target);
       broadcast(io, room);
     });
 
-    socket.on('room:fillBots', () => {
-      const ctx = getSessionRoom(socket);
-      if (!ctx) return err(socket, 'not in a room');
-      const { room, sess } = ctx;
-      if (room.hostPlayerId !== sess.playerId) return err(socket, 'host only');
-      if (room.state.phase !== 'LOBBY') return err(socket, 'cannot add bots mid-game');
+    on(socket, 'room:fillBots', () => {
+      const room = hostLobbyRoom(socket, 'add bots');
+      if (!room) return;
       for (let i = 0; i < 4; i++) {
-        if (!room.seats[i]) addBotToSeat(room, i as 0 | 1 | 2 | 3);
+        if (!room.seats[i]) room.seats[i] = botSeat(room, i as SeatIndex);
       }
       broadcast(io, room);
     });
 
-    socket.on('room:removeBot', ({ seat }) => {
-      const ctx = getSessionRoom(socket);
-      if (!ctx) return err(socket, 'not in a room');
-      const { room, sess } = ctx;
-      if (room.hostPlayerId !== sess.playerId) return err(socket, 'host only');
-      if (room.state.phase !== 'LOBBY') return err(socket, 'cannot remove bot mid-game');
-      const s = room.seats[seat];
+    on(socket, 'room:removeBot', (payload) => {
+      if (!isObj(payload) || !isSeat(payload.seat)) return err(socket, 'invalid seat');
+      const room = hostLobbyRoom(socket, 'remove bot');
+      if (!room) return;
+      const s = room.seats[payload.seat];
       if (!s || !s.isBot) return err(socket, 'no bot in that seat');
-      room.seats[seat] = null;
+      room.seats[payload.seat] = null;
       broadcast(io, room);
     });
 
-    socket.on('bid:order', ({ alone }) => {
-      const ctx = getSeatedSession(socket);
-      if (!ctx) return err(socket, 'spectators cannot play');
-      const { room, seat } = ctx;
-      try {
-        const { state, events } = applyAction(room.state, {
-          type: 'BID_ORDER',
-          seat,
-          alone: !!alone,
-        });
-        room.state = state;
-        events.forEach((e) => io.to(room.code).emit('room:event', e));
-        broadcast(io, room);
-      } catch (e) {
-        err(socket, (e as Error).message);
-      }
+    on(socket, 'bid:order', (payload) => {
+      const alone = isObj(payload) && payload.alone === true;
+      playerAction(socket, (seat) => ({ type: 'BID_ORDER', seat, alone }), io);
     });
 
-    socket.on('bid:pass', () => {
-      const ctx = getSeatedSession(socket);
-      if (!ctx) return err(socket, 'spectators cannot play');
-      const { room, seat } = ctx;
-      try {
-        const { state, events } = applyAction(room.state, { type: 'BID_PASS', seat });
-        room.state = state;
-        events.forEach((e) => io.to(room.code).emit('room:event', e));
-        broadcast(io, room);
-      } catch (e) {
-        err(socket, (e as Error).message);
-      }
+    on(socket, 'bid:pass', () => {
+      playerAction(socket, (seat) => ({ type: 'BID_PASS', seat }), io);
     });
 
-    socket.on('bid:call', ({ suit, alone }) => {
-      const ctx = getSeatedSession(socket);
-      if (!ctx) return err(socket, 'spectators cannot play');
-      const { room, seat } = ctx;
-      try {
-        const { state, events } = applyAction(room.state, {
-          type: 'BID_CALL',
-          seat,
-          suit,
-          alone: !!alone,
-        });
-        room.state = state;
-        events.forEach((e) => io.to(room.code).emit('room:event', e));
-        broadcast(io, room);
-      } catch (e) {
-        err(socket, (e as Error).message);
-      }
+    on(socket, 'bid:call', (payload) => {
+      if (!isObj(payload) || !isSuit(payload.suit)) return err(socket, 'invalid suit');
+      const suit = payload.suit;
+      const alone = payload.alone === true;
+      playerAction(socket, (seat) => ({ type: 'BID_CALL', seat, suit, alone }), io);
     });
 
-    socket.on('farmers:redeal', () => {
-      const ctx = getSeatedSession(socket);
-      if (!ctx) return err(socket, 'spectators cannot play');
-      const { room, seat } = ctx;
-      try {
-        const { state, events } = applyAction(room.state, { type: 'FARMERS_REDEAL', seat });
-        room.state = state;
-        events.forEach((e) => io.to(room.code).emit('room:event', e));
-        broadcast(io, room);
-      } catch (e) {
-        err(socket, (e as Error).message);
-      }
+    on(socket, 'farmers:redeal', () => {
+      playerAction(socket, (seat) => ({ type: 'FARMERS_REDEAL', seat }), io);
     });
 
-    socket.on('discard:card', ({ cardId }) => {
-      const ctx = getSeatedSession(socket);
-      if (!ctx) return err(socket, 'spectators cannot play');
-      const { room, seat } = ctx;
-      try {
-        const { state, events } = applyAction(room.state, {
-          type: 'DEALER_DISCARD',
-          seat,
-          cardId,
-        });
-        room.state = state;
-        events.forEach((e) => io.to(room.code).emit('room:event', e));
-        broadcast(io, room);
-      } catch (e) {
-        err(socket, (e as Error).message);
-      }
+    on(socket, 'discard:card', (payload) => {
+      if (!isObj(payload) || !isCardId(payload.cardId)) return err(socket, 'invalid card');
+      const cardId = payload.cardId;
+      playerAction(socket, (seat) => ({ type: 'DEALER_DISCARD', seat, cardId }), io);
     });
 
-    socket.on('play:card', ({ cardId }) => {
-      const ctx = getSeatedSession(socket);
-      if (!ctx) return err(socket, 'spectators cannot play');
-      const { room, seat } = ctx;
-      try {
-        const { state, events } = applyAction(room.state, {
-          type: 'PLAY_CARD',
-          seat,
-          cardId,
-        });
-        room.state = state;
-        events.forEach((e) => io.to(room.code).emit('room:event', e));
-        broadcast(io, room);
-      } catch (e) {
-        err(socket, (e as Error).message);
-      }
+    on(socket, 'play:card', (payload) => {
+      if (!isObj(payload) || !isCardId(payload.cardId)) return err(socket, 'invalid card');
+      const cardId = payload.cardId;
+      playerAction(socket, (seat) => ({ type: 'PLAY_CARD', seat, cardId }), io);
     });
 
-    socket.on('chat:send', ({ text }) => {
+    on(socket, 'chat:send', (payload) => {
+      if (!isObj(payload) || typeof payload.text !== 'string') return;
       const ctx = getSessionRoom(socket);
       if (!ctx) return;
       const { room, sess } = ctx;
-      const msg = roomManager.postChat(room, socket.id, sess.name, sess.isSpectator, text);
+      const msg = roomManager.postChat(room, sess.playerId, sess.name, sess.isSpectator, payload.text);
       if (msg) io.to(room.code).emit('chat:msg', msg);
     });
 
-    socket.on('room:leave', () => {
+    on(socket, 'room:leave', () => {
       // Intentional leave: remove the player immediately (no reconnect grace).
       const ctx = getSessionRoom(socket);
       if (ctx) {
@@ -822,21 +896,13 @@ export function attachHandlers(io: IO) {
           if (midGame && othersRemain) {
             // Don't leave an empty seat mid-hand — the game would stall on its
             // turn. A bot takes over so everyone else can keep playing.
-            const used = new Set(
-              room.seats.filter(Boolean).map((s) => s!.name)
-            );
-            room.seats[seat] = {
-              playerId: botIdFor(seat),
-              name: makeBotName(used),
-              socketId: null,
-              disconnectedAt: null,
-              isBot: true,
-            };
+            room.seats[seat] = botSeat(room, seat);
           } else {
             room.seats[seat] = null;
           }
         }
         room.spectators = room.spectators.filter((sp) => sp.playerId !== sess.playerId);
+        room.rateLimit.delete(sess.playerId);
         // Hand off host to a remaining human if needed.
         if (room.hostPlayerId === sess.playerId) {
           room.hostPlayerId = nextHostPlayerId(room);
@@ -858,8 +924,11 @@ export function attachHandlers(io: IO) {
 
     socket.on('disconnect', () => {
       sessions.delete(socket.id);
-      statWriteTimes.delete(socket.id);
-      roomManager.handleDisconnect(socket.id, (room) => broadcast(io, room));
+      try {
+        roomManager.handleDisconnect(socket.id, (room) => broadcast(io, room));
+      } catch (e) {
+        logHandlerError('disconnect', e);
+      }
     });
   });
 }

@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Card as CardT, Rank, Suit } from '@/server/engine/types';
 import {
   SUIT_COLOR_ON_DARK,
@@ -101,7 +101,12 @@ export function CardBack({
 }) {
   // Pick a stable random photo per-mount. Stable means no flicker on re-renders;
   // tied to component instance (slot), not to a specific card, so it leaks no info.
-  const [photoIdx] = useState(() => Math.floor(Math.random() * NUM_BACKS) + 1);
+  // Chosen in an effect (SSR and first client render both use back #1) so the
+  // hydrated markup matches what the server sent.
+  const [photoIdx, setPhotoIdx] = useState(1);
+  useEffect(() => {
+    setPhotoIdx(Math.floor(Math.random() * NUM_BACKS) + 1);
+  }, []);
 
   return (
     <div

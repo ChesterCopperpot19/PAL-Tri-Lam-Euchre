@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDisplayName, usePlayerId } from '@/lib/usePlayerId';
 import { getSocket } from '@/lib/socket-client';
+import { readRoomToken, storeRoomToken } from '@/lib/room-token';
 import PlayerNameSelect from '@/components/PlayerNameSelect';
 import type { RoomListEntry } from '@/lib/shared-types';
 
@@ -26,31 +27,6 @@ export default function LandingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rooms, setRooms] = useState<RoomListEntry[]>([]);
-  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
-
-  // Background video. Speed and loop trimming are baked into the file itself
-  // (24fps source slowed 4x with motion-interpolated frames at 30fps, stray
-  // opening frames cut). Chrome refuses autoplay in hidden tabs and won't
-  // retry on its own, so resume on visibility/focus/click.
-  useEffect(() => {
-    const v = bgVideoRef.current;
-    if (!v) return;
-    const resume = () => {
-      if (v.paused) v.play().catch(() => {});
-    };
-    document.addEventListener('visibilitychange', resume);
-    window.addEventListener('pageshow', resume);
-    window.addEventListener('focus', resume);
-    document.addEventListener('click', resume);
-    resume();
-    return () => {
-      document.removeEventListener('visibilitychange', resume);
-      window.removeEventListener('pageshow', resume);
-      window.removeEventListener('focus', resume);
-      document.removeEventListener('click', resume);
-    };
-  }, []);
-
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -84,13 +60,17 @@ export default function LandingPage() {
     setBusy(true);
     setError(null);
     const socket = getSocket();
+    const code = (joinCode || '').toUpperCase().trim();
     socket.emit(
       'room:join',
       {
-        code: (joinCode || '').toUpperCase().trim(),
+        code,
         name: name.trim(),
         playerId,
         asSpectator,
+        // Re-joining a room we were already in (e.g. from the room list) needs
+        // the reclaim token we were given the first time.
+        token: code ? readRoomToken(code) : undefined,
       },
       (res) => {
         setBusy(false);
@@ -99,6 +79,8 @@ export default function LandingPage() {
           return;
         }
         const c = res.snapshot.code;
+        // The room page re-joins on mount; without this token it'd be refused.
+        storeRoomToken(c, res.token);
         const role = asSpectator ? 'spectate' : 'play';
         router.push(`/room/${c}?role=${role}`);
       }
@@ -111,17 +93,22 @@ export default function LandingPage() {
 
   return (
     <>
-      <video
-        ref={bgVideoRef}
-        className="bg-video"
-        src="/bg.mp4"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        aria-hidden
-      />
+      {/* Cathedral of Learning at blue hour. Decorative only, so it carries an
+          empty alt and is hidden from assistive tech; the scrim below tints and
+          darkens it for text contrast. Narrow viewports get the 900px crop.
+          eslint-disable-next-line @next/next/no-img-element */}
+      <picture>
+        <source media="(max-width: 640px)" srcSet="/cathedral-900.jpg" />
+        <img
+          className="bg-photo"
+          src="/cathedral.jpg"
+          alt=""
+          width={1672}
+          height={941}
+          fetchPriority="high"
+          aria-hidden
+        />
+      </picture>
       <div className="bg-scrim" />
       <main className="min-h-screen flex flex-col items-center justify-center px-4 py-10 gap-6">
       <div className="w-full max-w-md bg-black/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur shadow-2xl">
@@ -150,7 +137,7 @@ export default function LandingPage() {
           Create New Game
         </button>
 
-        <div className="text-center text-white/40 text-xs my-2">— or join an existing room —</div>
+        <div className="text-center text-white/60 text-xs my-2">— or join an existing room —</div>
 
         <div className="flex gap-2">
           <input
@@ -158,6 +145,7 @@ export default function LandingPage() {
             onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 6))}
             maxLength={6}
             placeholder="ROOM CODE"
+            aria-label="Room code"
             className="flex-1 bg-black/40 border border-white/15 rounded-lg px-3 py-2.5 tracking-[0.3em] uppercase outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-gold/50"
           />
         </div>

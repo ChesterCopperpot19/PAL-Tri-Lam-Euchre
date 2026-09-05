@@ -1,20 +1,19 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getSocket } from '@/lib/socket-client';
+import { readRoomToken, storeRoomToken } from '@/lib/room-token';
 import { useDisplayName, usePlayerId } from '@/lib/usePlayerId';
+import { SUIT_NAME } from '@/lib/suits';
 import type { ChatMessage, RoomSnapshot } from '@/lib/shared-types';
 import Lobby from '@/components/Lobby';
-import Table from '@/components/Table';
+import Table, { type Handlers } from '@/components/Table';
 import type { Suit } from '@/server/engine/types';
 
-const SUIT_NAMES: Record<string, string> = {
-  H: 'Hearts',
-  D: 'Diamonds',
-  C: 'Clubs',
-  S: 'Spades',
-};
+/** Suit name for a raw event token (falls back to the token if it isn't a suit). */
+const suitName = (s: string) => (SUIT_NAME as Record<string, string>)[s] ?? s;
+
 
 /** Human-readable toast for a server game event, or null to stay silent.
  *  Noisy events (every card played, every trick) are deliberately skipped —
@@ -26,11 +25,11 @@ function eventText(ev: string, snap: RoomSnapshot | null): string | null {
   const alone = parts[3] === 'alone' ? ' — going ALONE 🔥' : '';
   switch (parts[0]) {
     case 'bid_order':
-      return `${nameOf(parts[1])} told the dealer to pick it up — trump is ${
-        SUIT_NAMES[parts[2]] ?? parts[2]
-      }${alone}`;
+      return `${nameOf(parts[1])} told the dealer to pick it up — trump is ${suitName(
+        parts[2]
+      )}${alone}`;
     case 'bid_call':
-      return `${nameOf(parts[1])} called ${SUIT_NAMES[parts[2]] ?? parts[2]}${alone}`;
+      return `${nameOf(parts[1])} called ${suitName(parts[2])}${alone}`;
     case 'farmers_redeal':
       return `${nameOf(parts[1])} threw in a farmer's hand — re-dealing`;
     case 'bid_round1_all_passed':
@@ -42,7 +41,25 @@ function eventText(ev: string, snap: RoomSnapshot | null): string | null {
   }
 }
 
+function Connecting() {
+  return (
+    <main className="min-h-screen flex items-center justify-center text-white/60">
+      Connecting…
+    </main>
+  );
+}
+
+/** useSearchParams() opts the route out of static rendering unless it sits
+ *  under a Suspense boundary — hence the inner/outer split. */
 export default function RoomPage() {
+  return (
+    <Suspense fallback={<Connecting />}>
+      <RoomPageInner />
+    </Suspense>
+  );
+}
+
+function RoomPageInner() {
   const params = useParams<{ code: string }>();
   const code = (params?.code || '').toString().toUpperCase();
   const router = useRouter();
@@ -56,11 +73,17 @@ export default function RoomPage() {
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [joining, setJoining] = useState(true);
   const [joinFailed, setJoinFailed] = useState<string | null>(null);
-  const joinedRef = useRef(false);
+  // Guards against the effect body running twice for one mount.
+  const listenersBoundRef = useRef(false);
+  // True once the FIRST room:join has been acked ok. Until then a 'connect'
+  // event is the initial join (cold load), not a rejoin.
+  const hasJoinedRef = useRef(false);
   // Latest snapshot for event handlers registered once (avoids stale closures).
   const snapshotRef = useRef<RoomSnapshot | null>(null);
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
   const toastIdRef = useRef(0);
+  // Every auto-dismiss timer (toasts, error banner) so cleanup can clear them.
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   // The "going alone" gag: a full-screen photo for 7s whenever a loner is called.
   const [lonerFx, setLonerFx] = useState(false);
   const [lonerCaller, setLonerCaller] = useState<string | null>(null);
@@ -68,10 +91,20 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!playerId) return;
-    if (joinedRef.current) return;
-    joinedRef.current = true;
+    if (listenersBoundRef.current) return;
+    listenersBoundRef.current = true;
 
     const socket = getSocket();
+    const timers = timersRef.current;
+
+    /** setTimeout that the effect cleanup can cancel. */
+    function later(fn: () => void, ms: number) {
+      const id = setTimeout(() => {
+        timers.delete(id);
+        fn();
+      }, ms);
+      timers.add(id);
+    }
 
     function onSnap(s: RoomSnapshot) {
       snapshotRef.current = s;
@@ -84,7 +117,8 @@ export default function RoomPage() {
       // included, since every bid flows through this same room:event.
       const p = ev.split(':');
       if ((p[0] === 'bid_order' || p[0] === 'bid_call') && p[3] === 'alone') {
-        const caller = snapshotRef.current?.members.find((m) => m.seat === Number(p[1]))?.name ?? null;
+        const caller =
+          snapshotRef.current?.members.find((m) => m.seat === Number(p[1]))?.name ?? null;
         setLonerCaller(caller);
         setLonerFx(true);
         if (lonerTimerRef.current) clearTimeout(lonerTimerRef.current);
@@ -95,13 +129,11 @@ export default function RoomPage() {
       if (!text) return;
       const id = ++toastIdRef.current;
       setToasts((cur) => [...cur.slice(-2), { id, text }]);
-      setTimeout(() => {
-        setToasts((cur) => cur.filter((t) => t.id !== id));
-      }, 4000);
+      later(() => setToasts((cur) => cur.filter((t) => t.id !== id)), 4000);
     }
     function onErr(msg: string) {
       setErrorBanner(msg);
-      setTimeout(() => setErrorBanner((cur) => (cur === msg ? null : cur)), 4000);
+      later(() => setErrorBanner((cur) => (cur === msg ? null : cur)), 4000);
     }
     function onMsg(m: ChatMessage) {
       // Dedupe by id — the server replays the full chat log on every (re)join,
@@ -116,6 +148,12 @@ export default function RoomPage() {
     // reconnects — fixes mobile background-tab disconnects, where the host
     // wouldn't see a new player join until refresh.
     function joinRoom(isReconnect: boolean) {
+      let token: string | undefined;
+      try {
+        token = readRoomToken(code);
+      } catch {
+        /* storage unavailable — join without a token */
+      }
       socket.emit(
         'room:join',
         {
@@ -123,13 +161,25 @@ export default function RoomPage() {
           name: name || 'Player',
           playerId: playerId!,
           asSpectator: role === 'spectate',
+          token,
         },
         (res) => {
-          if (!isReconnect) setJoining(false);
           if (!res.ok) {
-            if (!isReconnect) setJoinFailed(res.error);
+            if (!isReconnect) {
+              setJoining(false);
+              setJoinFailed(res.error);
+            } else {
+              onErr(res.error);
+            }
             return;
           }
+          try {
+            storeRoomToken(code, res.token);
+          } catch {
+            /* ignore */
+          }
+          hasJoinedRef.current = true;
+          setJoining(false);
           snapshotRef.current = res.snapshot;
           setSnapshot(res.snapshot);
         }
@@ -137,8 +187,9 @@ export default function RoomPage() {
     }
 
     // Named handler so cleanup removes only ours, not every 'connect' listener.
+    // On a cold load the socket is still connecting, so this IS the first join.
     function onConnect() {
-      joinRoom(true);
+      joinRoom(hasJoinedRef.current);
     }
 
     socket.on('room:snapshot', onSnap);
@@ -147,14 +198,17 @@ export default function RoomPage() {
     socket.on('room:event', onEvent);
     socket.on('connect', onConnect);
 
-    joinRoom(false);
+    // Already connected (navigated here from the landing page): join now.
+    // Otherwise the 'connect' handler above performs the first join — emitting
+    // here too would send room:join twice.
+    if (socket.connected) joinRoom(false);
 
     // When the tab becomes visible again (mobile lock/unlock, app switch),
     // refresh the snapshot in case we missed any events while backgrounded.
     function onVisibility() {
       if (document.visibilityState === 'visible') {
         if (!socket.connected) socket.connect();
-        else joinRoom(true);
+        else joinRoom(hasJoinedRef.current);
       }
     }
     document.addEventListener('visibilitychange', onVisibility);
@@ -167,18 +221,56 @@ export default function RoomPage() {
       socket.off('connect', onConnect);
       document.removeEventListener('visibilitychange', onVisibility);
       if (lonerTimerRef.current) clearTimeout(lonerTimerRef.current);
-      // Release the guard, or a re-run of this effect tears the listeners down and
-      // then bails at the `joinedRef` check without re-adding them — leaving the
-      // client deaf to room:snapshot and its lobby frozen at the join-time seats.
-      joinedRef.current = false;
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
+      // Release the guards, or a re-run of this effect tears the listeners down
+      // and then bails at the `listenersBoundRef` check without re-adding them —
+      // leaving the client deaf to room:snapshot and its lobby frozen at the
+      // join-time seats.
+      listenersBoundRef.current = false;
+      hasJoinedRef.current = false;
     };
   }, [code, playerId, name, role]);
+
+  // Stable across renders so Table (React.memo) only re-renders on real
+  // snapshot/chat changes, not on every toast tick. The socket is fetched
+  // lazily inside each handler — getSocket() must not run during SSR.
+  const handlers = useMemo(
+    () => ({
+      onOrder: (alone: boolean) => getSocket().emit('bid:order', { alone }),
+      onPass: () => getSocket().emit('bid:pass'),
+      onCall: (suit: Suit, alone: boolean) => getSocket().emit('bid:call', { suit, alone }),
+      onDiscard: (cardId: string) => getSocket().emit('discard:card', { cardId }),
+      onFarmersRedeal: () => getSocket().emit('farmers:redeal'),
+      onPlay: (cardId: string) => getSocket().emit('play:card', { cardId }),
+      onChat: (text: string) => getSocket().emit('chat:send', { text }),
+      onNextHand: () => getSocket().emit('room:nextHand'),
+      onRematch: () => getSocket().emit('room:rematch'),
+      onLeave: () => {
+        // Tell the server we're intentionally leaving so it cleans the room up
+        // immediately (no 60s grace, and bot-only rooms get deleted). The server
+        // disconnects us after processing, so we just emit then navigate — letting
+        // the emit flush instead of racing it with a client-side disconnect.
+        getSocket().emit('room:leave');
+        router.push('/');
+      },
+      // Lobby-only actions.
+      onStart: () => getSocket().emit('room:start'),
+      onPromote: (pid: string, seat: 0 | 1 | 2 | 3) =>
+        getSocket().emit('room:promote', { playerId: pid, seat }),
+      onAddBot: (seat: 0 | 1 | 2 | 3) => getSocket().emit('room:addBot', { seat }),
+      onFillBots: () => getSocket().emit('room:fillBots'),
+      onRemoveBot: (seat: 0 | 1 | 2 | 3) => getSocket().emit('room:removeBot', { seat }),
+      onMoveSeat: (seat: 0 | 1 | 2 | 3) => getSocket().emit('room:moveSeat', { seat }),
+    }),
+    [router]
+  ) satisfies Handlers;
 
   if (joinFailed) {
     return (
       <main className="min-h-screen flex items-center justify-center">
         <div className="bg-black/50 border border-red-400/40 rounded-xl p-6 max-w-md text-center">
-          <div className="text-red-300 font-medium">Couldn't join room</div>
+          <div className="text-red-300 font-medium">Couldn&apos;t join room</div>
           <div className="text-white/70 text-sm mt-1">{joinFailed}</div>
           <button
             onClick={() => router.push('/')}
@@ -192,33 +284,8 @@ export default function RoomPage() {
   }
 
   if (joining || !snapshot || !playerId) {
-    return (
-      <main className="min-h-screen flex items-center justify-center text-white/60">
-        Connecting…
-      </main>
-    );
+    return <Connecting />;
   }
-
-  const socket = getSocket();
-  const handlers = {
-    onOrder: (alone: boolean) => socket.emit('bid:order', { alone }),
-    onPass: () => socket.emit('bid:pass'),
-    onCall: (suit: Suit, alone: boolean) => socket.emit('bid:call', { suit, alone }),
-    onDiscard: (cardId: string) => socket.emit('discard:card', { cardId }),
-    onFarmersRedeal: () => socket.emit('farmers:redeal'),
-    onPlay: (cardId: string) => socket.emit('play:card', { cardId }),
-    onChat: (text: string) => socket.emit('chat:send', { text }),
-    onNextHand: () => socket.emit('room:nextHand'),
-    onRematch: () => socket.emit('room:rematch'),
-    onLeave: () => {
-      // Tell the server we're intentionally leaving so it cleans the room up
-      // immediately (no 60s grace, and bot-only rooms get deleted). The server
-      // disconnects us after processing, so we just emit then navigate — letting
-      // the emit flush instead of racing it with a client-side disconnect.
-      socket.emit('room:leave');
-      router.push('/');
-    },
-  };
 
   return (
     <>
@@ -241,38 +308,41 @@ export default function RoomPage() {
       )}
 
       {errorBanner && (
-        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-50 bg-red-500/90 text-white text-sm px-3 py-1.5 rounded-md shadow-lg">
+        <div
+          role="alert"
+          className="fixed top-2 left-1/2 -translate-x-1/2 z-50 bg-red-500/90 text-white text-sm px-3 py-1.5 rounded-md shadow-lg"
+        >
           {errorBanner}
         </div>
       )}
 
-      {/* Game-event toasts ("Maggie called Hearts", "Rematch!") */}
-      {toasts.length > 0 && (
-        <div
-          aria-live="polite"
-          className="fixed top-12 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-1.5 pointer-events-none px-3 w-full max-w-md"
-        >
-          {toasts.map((t) => (
-            <div
-              key={t.id}
-              className="bg-black/85 border border-gold/50 text-white text-sm px-3 py-1.5 rounded-lg shadow-lg fade-in text-center"
-            >
-              {t.text}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Game-event toasts ("Maggie called Hearts", "Rematch!"). The live
+          region is always mounted — screen readers only announce changes to a
+          region that already existed. */}
+      <div
+        aria-live="polite"
+        className="fixed top-12 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-1.5 pointer-events-none px-3 w-full max-w-md"
+      >
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className="bg-black/85 border border-gold/50 text-white text-sm px-3 py-1.5 rounded-lg shadow-lg fade-in text-center"
+          >
+            {t.text}
+          </div>
+        ))}
+      </div>
 
       {snapshot.state.phase === 'LOBBY' ? (
         <Lobby
           snapshot={snapshot}
           myId={playerId}
-          onStart={() => socket.emit('room:start')}
-          onPromote={(pid, seat) => socket.emit('room:promote', { playerId: pid, seat })}
-          onAddBot={(seat) => socket.emit('room:addBot', { seat })}
-          onFillBots={() => socket.emit('room:fillBots')}
-          onRemoveBot={(seat) => socket.emit('room:removeBot', { seat })}
-          onMoveSeat={(seat) => socket.emit('room:moveSeat', { seat })}
+          onStart={handlers.onStart}
+          onPromote={handlers.onPromote}
+          onAddBot={handlers.onAddBot}
+          onFillBots={handlers.onFillBots}
+          onRemoveBot={handlers.onRemoveBot}
+          onMoveSeat={handlers.onMoveSeat}
           onLeave={handlers.onLeave}
         />
       ) : (

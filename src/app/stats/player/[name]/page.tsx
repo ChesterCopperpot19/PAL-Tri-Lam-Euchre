@@ -5,16 +5,14 @@ import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { getSocket } from '@/lib/socket-client';
 import type { MatchRecord, StatsPayload } from '@/lib/shared-types';
-import { computePlayers, nameKey } from '@/lib/stats-analytics';
+import { computePlayers, nameKey, prepareGames } from '@/lib/stats-analytics';
+import { one, pct } from '@/lib/stats-format';
 import { computeElo } from '@/lib/stats-elo';
 import { computeProfile, computeRadar } from '@/lib/stats-profile';
 import { computeBadges, badgesFor } from '@/lib/stats-achievements';
 import { computeClutch, type ClutchRow } from '@/lib/stats-clutch';
 import { RadarChart, EloLineChart } from '@/components/stats/ProfileCharts';
 import { earnedDateLabel } from '@/components/stats/AchievementsStrip';
-
-const pct = (n: number) => `${Math.round(n * 100)}%`;
-const one = (n: number) => n.toFixed(1);
 
 type Tab = 'overview' | 'partners' | 'trends' | 'field';
 const TABS: { id: Tab; label: string }[] = [
@@ -36,7 +34,16 @@ function Kpi({ label, value, sub }: { label: string; value: React.ReactNode; sub
 
 export default function PlayerProfilePage() {
   const params = useParams<{ name: string }>();
-  const name = decodeURIComponent((params?.name ?? '').toString());
+  const rawName = (params?.name ?? '').toString();
+  // A malformed escape (e.g. a stray "%") throws URIError — fall back to the raw
+  // segment rather than crashing the page.
+  const name = useMemo(() => {
+    try {
+      return decodeURIComponent(rawName);
+    } catch {
+      return rawName;
+    }
+  }, [rawName]);
 
   const [data, setData] = useState<StatsPayload | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -59,10 +66,12 @@ export default function PlayerProfilePage() {
   }, []);
 
   const allMatches = useMemo<MatchRecord[]>(() => data?.matches ?? [], [data]);
-  const players = useMemo(() => computePlayers(allMatches), [allMatches]);
-  const elo = useMemo(() => computeElo(allMatches), [allMatches]);
+  // Human-only filter + canonicalization once; every compute below reuses it.
+  const human = useMemo(() => prepareGames(allMatches), [allMatches]);
+  const players = useMemo(() => computePlayers(human), [human]);
+  const elo = useMemo(() => computeElo(human), [human]);
   const radar = useMemo(() => computeRadar(players), [players]);
-  const profile = useMemo(() => computeProfile(name, allMatches), [name, allMatches]);
+  const profile = useMemo(() => computeProfile(name, human), [name, human]);
   // Case-insensitive lookup; profile.name carries the canonical casing.
   const canonical = profile.name;
   const myRow = useMemo(
@@ -72,12 +81,12 @@ export default function PlayerProfilePage() {
   const myElo = elo.get(canonical) ?? null;
   const myRadar = radar.get(canonical) ?? null;
   const myBadges = useMemo(
-    () => badgesFor(canonical, computeBadges(allMatches, players, elo)),
-    [allMatches, players, elo, canonical]
+    () => badgesFor(canonical, computeBadges(human, players, elo)),
+    [human, players, elo, canonical]
   );
   const myClutch = useMemo<ClutchRow | null>(
-    () => computeClutch(allMatches).players.find((p) => nameKey(p.name) === nameKey(name)) ?? null,
-    [allMatches, name]
+    () => computeClutch(human).players.find((p) => nameKey(p.name) === nameKey(name)) ?? null,
+    [human, name]
   );
 
   return (

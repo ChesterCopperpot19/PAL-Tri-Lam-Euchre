@@ -40,7 +40,6 @@ Cross-checked against Hoyle's, the Bicycle "Official Rules of Card Games", and t
 
 - **Defending alone** — a non-maker may, in some rule sets, declare "alone" themselves, sitting out their own partner. Not implemented. (Adds 4 points if defenders alone-euchre, but rarely used in casual play.)
 - **Bidding the back** / "no trump" / "British Euchre" extensions.
-- **Farmer's hand** redeal (some variants allow a redeal if your hand is all 9s and 10s).
 - **Throw-down hand on round 2 all-pass** — moot, since stick the dealer is on.
 
 If you want any of these toggled on/off, they live in [game.ts](src/server/engine/game.ts) (`scoreHand`, `BID_PASS` for stick) and are short to add behind a `houseRules` flag.

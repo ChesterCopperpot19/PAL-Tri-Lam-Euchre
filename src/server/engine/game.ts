@@ -9,9 +9,7 @@ import {
   HandSummary,
   PARTNER,
   POINTS_TO_WIN,
-  Phase,
   SeatIndex,
-  Suit,
   TEAM_OF,
 } from './types';
 
@@ -252,6 +250,9 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
       if (state.phase !== 'BIDDING_2') throw new Error('not in BIDDING_2');
       if (action.seat !== state.turn) throw new Error('not your turn');
       if (!state.upcard) throw new Error('no upcard');
+      // Defence in depth: the socket layer validates too, but a bogus suit here
+      // would silently become "no trump" for the whole hand and be persisted.
+      if (!ALL_SUITS.includes(action.suit)) throw new Error('invalid suit');
       if (action.suit === state.upcard.suit) throw new Error('cannot call upcard suit in round 2');
       let s: GameState = {
         ...state,

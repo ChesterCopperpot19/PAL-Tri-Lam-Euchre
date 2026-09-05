@@ -3,12 +3,18 @@
 // newest first, with the same date/source filters as the dashboard.
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket-client';
 import type { MatchRecord, StatsPayload } from '@/lib/shared-types';
-import { filterMatches, humanGames } from '@/lib/stats-analytics';
+import { filterMatches, prepareGames } from '@/lib/stats-analytics';
+import { clearAdminKey, getAdminKey } from '@/lib/stats-admin-key';
 import { computeSessions, formatDuration } from '@/lib/stats-sessions';
 import { sessionDateLabel } from '@/components/stats/SessionRecap';
+import StatsFilters, {
+  EMPTY_FILTERS,
+  matchFilterFor,
+  type StatsFilterState,
+} from '@/components/stats/StatsFilters';
 import GameRow from '@/components/stats/GameRow';
 import PlayerLink from '@/components/stats/PlayerLink';
 
@@ -16,22 +22,25 @@ export default function GamesArchivePage() {
   const [data, setData] = useState<StatsPayload | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [source, setSource] = useState<'all' | 'app' | 'manual' | 'historical'>('all');
+  const [filters, setFilters] = useState<StatsFilterState>(EMPTY_FILTERS);
 
   // Same admin-key gate as the dashboard (server-side check is the real gate).
   const [adminKey, setAdminKey] = useState<string | null>(null);
   useEffect(() => {
-    try {
-      setAdminKey(localStorage.getItem('euchre_admin_key'));
-    } catch {
-      /* stays locked */
-    }
+    setAdminKey(getAdminKey());
   }, []);
 
+  // Ignore socket acks that land after this page has unmounted.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const load = useCallback(() => {
     getSocket().emit('stats:get', (payload) => {
+      if (!alive.current) return;
       setData(payload);
       setLoaded(true);
     });
@@ -44,24 +53,27 @@ export default function GamesArchivePage() {
     if (!adminKey) return;
     if (!window.confirm('Delete this game from the stats? This cannot be undone.')) return;
     getSocket().emit('stats:delete', { id, key: adminKey }, (res) => {
-      if (res.ok) load();
-      else window.alert(res.error);
+      if (res.ok) {
+        load();
+        return;
+      }
+      if (res.code === 'auth') {
+        clearAdminKey();
+        setAdminKey(null);
+        window.alert(`${res.error}\n\nThe saved key was cleared — unlock again from the dashboard.`);
+      } else {
+        window.alert(res.error);
+      }
     });
   }
 
   const allMatches = useMemo<MatchRecord[]>(() => data?.matches ?? [], [data]);
-  const matches = useMemo(
-    () =>
-      filterMatches(allMatches, {
-        from: dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : undefined,
-        to: dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : undefined,
-        source: source === 'all' ? undefined : source,
-      }),
-    [allMatches, dateFrom, dateTo, source]
-  );
-  const gameCount = useMemo(() => humanGames(matches).length, [matches]);
+  const matches = useMemo(() => filterMatches(allMatches, matchFilterFor(filters)), [allMatches, filters]);
+  // Human-only filter runs once; computeSessions recognises the prepared list.
+  const human = useMemo(() => prepareGames(matches), [matches]);
+  const gameCount = human.length;
   // Newest session first, games within a session newest first.
-  const sessions = useMemo(() => computeSessions(matches).slice().reverse(), [matches]);
+  const sessions = useMemo(() => computeSessions(human).slice().reverse(), [human]);
 
   return (
     <main className="min-h-screen px-3 sm:px-4 py-6 max-w-4xl mx-auto">
@@ -85,51 +97,7 @@ export default function GamesArchivePage() {
       </div>
 
       {/* Filters */}
-      <section className="bg-black/30 border border-white/10 rounded-2xl p-4 flex flex-wrap items-end gap-3 mb-5">
-        <label className="text-xs text-white/60">
-          <span className="uppercase tracking-wider block mb-1">From</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 outline-none focus:border-gold text-white"
-          />
-        </label>
-        <label className="text-xs text-white/60">
-          <span className="uppercase tracking-wider block mb-1">To</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 outline-none focus:border-gold text-white"
-          />
-        </label>
-        <label className="text-xs text-white/60">
-          <span className="uppercase tracking-wider block mb-1">Games</span>
-          <select
-            value={source}
-            onChange={(e) => setSource(e.target.value as 'all' | 'app' | 'manual' | 'historical')}
-            className="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 outline-none focus:border-gold text-white"
-          >
-            <option value="all">All</option>
-            <option value="app">Online</option>
-            <option value="manual">In person</option>
-            <option value="historical">Historical</option>
-          </select>
-        </label>
-        {(dateFrom || dateTo || source !== 'all') && (
-          <button
-            onClick={() => {
-              setDateFrom('');
-              setDateTo('');
-              setSource('all');
-            }}
-            className="text-xs text-white/60 hover:text-white border border-white/15 rounded-lg px-2.5 py-1.5"
-          >
-            Clear filters
-          </button>
-        )}
-      </section>
+      <StatsFilters value={filters} onChange={setFilters} className="mb-5" />
 
       {!loaded ? (
         <div className="text-white/60">Loading…</div>
