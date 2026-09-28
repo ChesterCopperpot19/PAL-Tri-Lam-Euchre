@@ -4,37 +4,18 @@
 // plays: ones that gave away a trick with every card visible but were sound.
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { MatchRecord } from '@/lib/shared-types';
-import type { Card, HandSummary, Rank, Suit } from '@/server/engine/types';
+import type { Card, Rank, Suit } from '@/server/engine/types';
 import { nameKey } from '@/lib/stats-analytics';
-import { getHands } from '@/components/analyzer/useGameRecord';
 import { CardText } from '@/components/analyzer/MiniCard';
 import { aggregate, type DecisionStats } from '@/lib/solver/decisions';
-import { useDecisions } from '@/lib/solver/useDecisions';
+import { useGradedGames } from './useGradedGames';
 
 const cardOf = (id: string): Card => ({ id, rank: id.slice(0, -1) as Rank, suit: id.slice(-1) as Suit });
 
 export default function DecisionsTab({ name, games }: { name: string; games: MatchRecord[] }) {
-  // Card-by-card hands for the club's app-played games.
-  const [full, setFull] = useState<Map<string, HandSummary[]> | null>(null);
-  useEffect(() => {
-    let alive = true;
-    getHands().then((p) => alive && setFull(new Map(p.games.map((g) => [g.id, g.hands]))));
-    return () => {
-      alive = false;
-    };
-  }, []);
-  const withCards = useMemo(
-    () =>
-      full
-        ? games
-            .filter((m) => full.get(m.id)?.some((h) => h.tricks?.length))
-            .map((m) => ({ id: m.id, hands: full.get(m.id)! }))
-        : null,
-    [games, full],
-  );
-  const { graded, progress } = useDecisions(withCards);
+  const { withCards, graded, progress } = useGradedGames(games);
 
   const result = useMemo(() => {
     if (!graded || !withCards) return null;

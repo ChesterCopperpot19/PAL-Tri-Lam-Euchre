@@ -59,6 +59,8 @@ export type DecisionStats = {
   mistakes: number;
   /** Expected points given up, summed over decisions. */
   pointsLost: number;
+  /** Sum of squared per-decision losses (for a confidence range on the mean). */
+  pointsLostSq: number;
   /** Plays that gave away a trick in hindsight but were sound: bad luck. */
   unlucky: number;
   /** Plays that gave away a trick in hindsight. */
@@ -82,6 +84,7 @@ export function aggregate(games: GradedGame[]): { stats: DecisionStats; mistakes
     close: 0,
     mistakes: 0,
     pointsLost: 0,
+    pointsLostSq: 0,
     unlucky: 0,
     hindsightMisplays: 0,
     byRole: { maker: emptyRole(), defender: emptyRole() },
@@ -100,6 +103,7 @@ export function aggregate(games: GradedGame[]): { stats: DecisionStats; mistakes
         st.decisions++;
         role.decisions++;
         st.pointsLost += d.f!;
+        st.pointsLostSq += d.f! * d.f!;
         role.pointsLost += d.f!;
         if (d.g === 'S') st.sound++;
         else if (d.g === 'C') st.close++;
@@ -112,4 +116,14 @@ export function aggregate(games: GradedGame[]): { stats: DecisionStats; mistakes
     );
   mistakes.sort((x, y) => y.d.f! - x.d.f!);
   return { stats: st, mistakes };
+}
+
+/** Points lost per 100 decisions, with a ~95% range (normal approximation). */
+export function pointsLostPer100(st: DecisionStats): { mean: number; lo: number; hi: number } {
+  const n = st.decisions;
+  if (!n) return { mean: 0, lo: 0, hi: 0 };
+  const m = st.pointsLost / n;
+  const variance = Math.max(0, st.pointsLostSq / n - m * m);
+  const half = n > 1 ? 1.96 * Math.sqrt(variance / (n - 1)) : 0;
+  return { mean: 100 * m, lo: 100 * Math.max(0, m - half), hi: 100 * (m + half) };
 }

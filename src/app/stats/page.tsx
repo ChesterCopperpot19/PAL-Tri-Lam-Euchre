@@ -39,6 +39,7 @@ import PartnershipScatter from '@/components/stats/PartnershipScatter';
 import { EloTimelineChart, VolumeChart } from '@/components/stats/StatCharts';
 import HandLevelData from '@/components/stats/HandLevelData';
 import SessionRecap from '@/components/stats/SessionRecap';
+import DecisionQuality from '@/components/stats/DecisionQuality';
 import GameRow from '@/components/stats/GameRow';
 
 /** A titled dashboard panel. */
@@ -82,7 +83,8 @@ export default function StatsPage() {
   const [fullStats, setFullStats] = useState(true); // leaderboard: all stat columns (default on)
   const [showHands, setShowHands] = useState(false); // full hand-level data set (collapsed by default)
   const [showDealer, setShowDealer] = useState(false); // dealer analytics (loads heavy bid logs)
-  const [showLuck, setShowLuck] = useState(false); // luck index (loads heavy trick logs)
+  const [showLuck, setShowLuck] = useState(false);
+  const [showDecisions, setShowDecisions] = useState(false); // luck index (loads heavy trick logs)
 
   // Charts render client-only (canvas), so gate them until after mount.
   const [mounted, setMounted] = useState(false);
@@ -379,6 +381,30 @@ export default function StatsPage() {
                 full={fullStats}
                 seahorseName={lowestEloName}
               />
+            )}
+          </Section>
+
+          {/* Decision quality — graded only when expanded (heavy the first time). */}
+          <Section
+            title="Decision quality"
+            note="Who plays their cards best, graded on what each player could see at the time"
+            right={
+              <button
+                onClick={() => setShowDecisions((v) => !v)}
+                aria-pressed={showDecisions}
+                className="text-sm bg-white/10 hover:bg-white/20 border border-white/15 rounded-lg px-3 py-1.5"
+              >
+                {showDecisions ? 'Collapse' : '🎯 Expand'}
+              </button>
+            }
+          >
+            {showDecisions ? (
+              <DecisionQuality games={human} />
+            ) : (
+              <p className="text-white/45 text-sm">
+                Expand to see who throws away the most points with their card choices, and who’s sharpest. Judged
+                on what each player knew when they played, not hindsight, so bad luck isn’t counted as a mistake.
+              </p>
             )}
           </Section>
 
