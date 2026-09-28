@@ -78,6 +78,8 @@ export default function HandReplay({
 
   return (
     <div className="space-y-4">
+      {analysis && <MisplaySummary analysis={analysis} names={names} step={step} onStep={go} />}
+
       {/* The table: every hand face up. */}
       <section
         aria-label="The table"
@@ -139,6 +141,55 @@ export default function HandReplay({
   );
 }
 
+/** Who gave tricks away this hand, at a glance. Each entry jumps to that card. */
+function MisplaySummary({
+  analysis,
+  names,
+  step,
+  onStep,
+}: {
+  analysis: HandAnalysis;
+  names: Record<number, string>;
+  step: number;
+  onStep: (s: number) => void;
+}) {
+  const misplays = analysis.plays.map((p, i) => ({ p, step: i + 1 })).filter(({ p }) => p.cost > 0);
+  return (
+    <section className="bg-black/40 border border-white/10 rounded-2xl p-3 sm:p-4" aria-label="Misplays this hand">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
+        <h2 className="text-sm uppercase tracking-wider text-gold font-semibold">Misplays</h2>
+        <span className="text-[11px] uppercase tracking-wider text-white/45">With every card visible</span>
+      </div>
+      {misplays.length === 0 ? (
+        <p className="text-sm text-white/75">None. Every card was a best play.</p>
+      ) : (
+        <ul className="flex flex-wrap gap-1.5">
+          {misplays.map(({ p, step: s }) => (
+            <li key={s}>
+              <button
+                onClick={() => onStep(s)}
+                className={`rounded-lg border px-2.5 py-1.5 text-xs sm:text-sm text-left ${
+                  step === s ? 'border-white/40 bg-white/10' : 'border-white/10 bg-black/25 hover:bg-white/5'
+                }`}
+              >
+                <span aria-hidden className="mr-1" style={{ color: p.maker ? '#E0663F' : '#1FA198' }}>
+                  {p.maker ? '▼' : '▲'}
+                </span>
+                <strong className="text-white">{names[p.seat]}</strong>
+                <span className="text-white/60"> ({p.maker ? 'makers' : 'defenders'}), trick {p.trick + 1}: </span>
+                <CardText card={p.card} />
+                <span className="text-white/85">
+                  {' '}gave away {p.cost}, <CardText card={p.better!} /> was better
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function HindsightNote() {
   return (
     <span className="block mt-1 text-[11px] uppercase tracking-wider text-white/45">
@@ -162,7 +213,7 @@ function Verdict({ v, names }: { v: PlayVerdict; names: Record<number, string> }
           </span>
         ) : (
           <span className="text-white font-semibold">
-            ✗ Gave away {v.cost} trick{v.cost === 1 ? '' : 's'}. <CardText card={v.better!} /> was better.
+            ✗ {names[v.seat]} gave away {v.cost} trick{v.cost === 1 ? '' : 's'}. <CardText card={v.better!} /> was better.
           </span>
         )}
       </p>

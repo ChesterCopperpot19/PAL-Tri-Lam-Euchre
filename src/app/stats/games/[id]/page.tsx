@@ -162,6 +162,15 @@ function HandList({
                   <span className="text-white/30">·</span>
                   <span>{handResult(h, names)}</span>
                 </div>
+                {a && a.plays.some((p) => p.cost > 0) && (
+                  <div className="text-xs text-white/80 mt-1">
+                    <span className="text-white/50">Misplays: </span>
+                    {a.plays
+                      .filter((p) => p.cost > 0)
+                      .map((p) => `${names[p.seat]} (trick ${p.trick + 1}, gave away ${p.cost})`)
+                      .join(' · ')}
+                  </div>
+                )}
               </Link>
             </li>
           );
