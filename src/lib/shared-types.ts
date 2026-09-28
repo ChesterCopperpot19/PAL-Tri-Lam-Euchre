@@ -23,6 +23,8 @@ export type RoomSnapshot = {
   spectatorCount: number;
   /** True if all 4 seats are filled. */
   full: boolean;
+  /** How the room's bots play (host picks in the lobby). */
+  botLevel: 'strong' | 'easy';
   state: RedactedState;
 };
 
@@ -153,6 +155,7 @@ export type ClientToServerEvents = {
   'room:addBot': (payload: { seat?: 0 | 1 | 2 | 3 }) => void;
   'room:removeBot': (payload: { seat: 0 | 1 | 2 | 3 }) => void;
   'room:fillBots': () => void;
+  'room:setBotLevel': (payload: { level: 'strong' | 'easy' }) => void;
   'rooms:list': (
     ack: (rooms: RoomListEntry[]) => void
   ) => void;

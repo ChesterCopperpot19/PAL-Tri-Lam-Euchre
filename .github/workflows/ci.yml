@@ -33,3 +33,5 @@ jobs:
         run: npm run build
       - name: Socket fuzz check
         run: npx tsx scripts/socket-fuzz-check.ts
+      - name: Strong bot end-to-end
+        run: npx tsx scripts/strong-bot-smoke.ts

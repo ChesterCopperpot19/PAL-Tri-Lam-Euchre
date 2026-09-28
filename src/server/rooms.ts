@@ -48,7 +48,12 @@ export type Room = {
   statsRecorded: boolean;
   /** When the current game started (epoch ms) — for game-duration stats. */
   startedTs?: number;
+  /** How the room's bots play: 'strong' (sampling + double-dummy search on a
+   *  worker thread) or 'easy' (the original heuristic). Host picks in the lobby. */
+  botLevel: BotLevel;
 };
+
+export type BotLevel = 'strong' | 'easy';
 
 const DISCONNECT_GRACE_MS = 60_000;
 /** Hard cap on concurrent rooms — protects memory against a create-room loop. */
@@ -103,6 +108,7 @@ export class RoomManager {
       rateLimit: new Map(),
       createdAt: Date.now(),
       botTimer: null,
+      botLevel: 'strong',
       handEndTimer: null,
       turnTimer: null,
       lastTrickCount: 0,

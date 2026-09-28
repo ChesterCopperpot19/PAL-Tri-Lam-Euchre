@@ -262,6 +262,7 @@ function RoomPageInner() {
       onFillBots: () => getSocket().emit('room:fillBots'),
       onRemoveBot: (seat: 0 | 1 | 2 | 3) => getSocket().emit('room:removeBot', { seat }),
       onMoveSeat: (seat: 0 | 1 | 2 | 3) => getSocket().emit('room:moveSeat', { seat }),
+      onSetBotLevel: (level: 'strong' | 'easy') => getSocket().emit('room:setBotLevel', { level }),
     }),
     [router]
   ) satisfies Handlers;
@@ -343,6 +344,7 @@ function RoomPageInner() {
           onFillBots={handlers.onFillBots}
           onRemoveBot={handlers.onRemoveBot}
           onMoveSeat={handlers.onMoveSeat}
+          onSetBotLevel={handlers.onSetBotLevel}
           onLeave={handlers.onLeave}
         />
       ) : (

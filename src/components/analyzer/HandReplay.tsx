@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Card, HandSummary, SeatIndex, TrickPlay } from '@/server/engine/types';
 import type { HandAnalysis, PlayVerdict } from '@/lib/solver/analyze';
+import type { FairVerdict } from '@/lib/solver/fair';
 import { sortHand } from '@/lib/hand-sort';
 import { SuitGlyph } from '@/components/Card';
 import MiniCard, { CardText } from './MiniCard';
@@ -20,11 +21,14 @@ export default function HandReplay({
   hand,
   analysis,
   names,
+  fair,
   initialStep = 0,
 }: {
   hand: HandSummary;
   /** undefined while solving; null when the hand can't be analysed. */
   analysis: HandAnalysis | null | undefined;
+  /** Grades on what each player could see (undefined while solving). */
+  fair?: (FairVerdict | null)[] | null;
   names: Record<number, string>;
   /** Cards already played when the replay opens (from the ?card= link). */
   initialStep?: number;
@@ -75,10 +79,11 @@ export default function HandReplay({
   const trickWinner = trickDone ? hand.tricks![trickIdx].winner : undefined;
   const toPlay = step < n ? plays[step].seat : null;
   const latest: PlayVerdict | null = analysis && step > 0 ? analysis.plays[step - 1] : null;
+  const latestFair = fair && step > 0 ? fair[step - 1] : undefined;
 
   return (
     <div className="space-y-4">
-      {analysis && <MisplaySummary analysis={analysis} names={names} step={step} onStep={go} />}
+      {analysis && <MisplaySummary analysis={analysis} fair={fair} names={names} step={step} onStep={go} />}
 
       {/* The table: every hand face up. */}
       <section
@@ -125,7 +130,7 @@ export default function HandReplay({
             <HindsightNote />
           </p>
         ) : (
-          <Verdict v={latest} names={names} />
+          <Verdict v={latest} fair={latestFair} fairPending={fair === undefined} names={names} />
         )}
       </section>
 
@@ -144,16 +149,24 @@ export default function HandReplay({
 /** Who gave tricks away this hand, at a glance. Each entry jumps to that card. */
 function MisplaySummary({
   analysis,
+  fair,
   names,
   step,
   onStep,
 }: {
   analysis: HandAnalysis;
+  fair: (FairVerdict | null)[] | null | undefined;
   names: Record<number, string>;
   step: number;
   onStep: (s: number) => void;
 }) {
   const misplays = analysis.plays.map((p, i) => ({ p, step: i + 1 })).filter(({ p }) => p.cost > 0);
+  // Cards that were real mistakes on the player's information but happened to work.
+  const gotAway = fair
+    ? analysis.plays
+        .map((p, i) => ({ p, f: fair[i], step: i + 1 }))
+        .filter(({ p, f }) => p.cost === 0 && f?.grade === 'mistake')
+    : [];
   return (
     <section className="bg-black/40 border border-white/10 rounded-2xl p-3 sm:p-4" aria-label="Misplays this hand">
       <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
@@ -181,13 +194,53 @@ function MisplaySummary({
                 <span className="text-white/85">
                   {' '}gave away {p.cost}, <CardText card={p.better!} /> was better
                 </span>
+                <FairTag f={fair?.[s - 1]} pending={fair === undefined} />
               </button>
             </li>
           ))}
         </ul>
       )}
+      {gotAway.length > 0 && (
+        <div className="mt-2.5">
+          <div className="text-[11px] uppercase tracking-wider text-white/45 mb-1.5">
+            Risky choices that worked out · with what they could see
+          </div>
+          <ul className="flex flex-wrap gap-1.5">
+            {gotAway.map(({ p, f, step: s }) => (
+              <li key={s}>
+                <button
+                  onClick={() => onStep(s)}
+                  className={`rounded-lg border px-2.5 py-1.5 text-xs sm:text-sm text-left ${
+                    step === s ? 'border-white/40 bg-white/10' : 'border-white/10 bg-black/25 hover:bg-white/5'
+                  }`}
+                >
+                  <strong className="text-white">{names[p.seat]}</strong>
+                  <span className="text-white/60">, trick {p.trick + 1}: </span>
+                  <CardText card={p.card} />
+                  <span className="text-white/85">
+                    {' '}cost about {f!.cost.toFixed(1)} points on average; <CardText card={f!.best} /> was the better bet
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
+}
+
+/** The fair grade beside a hindsight misplay: was it a mistake, or bad luck? */
+function FairTag({ f, pending }: { f: FairVerdict | null | undefined; pending: boolean }) {
+  if (pending) return <span className="block mt-0.5 text-white/40 text-[11px]">checking what they could see…</span>;
+  if (f === undefined) return null;
+  const text =
+    !f || f.grade === 'sound'
+      ? 'sound with what they could see: unlucky'
+      : f.grade === 'close'
+        ? 'a close call with what they could see'
+        : 'a mistake even with what they could see';
+  return <span className="block mt-0.5 text-[11px] text-white/60">{text}</span>;
 }
 
 function HindsightNote() {
@@ -198,7 +251,17 @@ function HindsightNote() {
   );
 }
 
-function Verdict({ v, names }: { v: PlayVerdict; names: Record<number, string> }) {
+function Verdict({
+  v,
+  fair,
+  fairPending,
+  names,
+}: {
+  v: PlayVerdict;
+  fair: FairVerdict | null | undefined;
+  fairPending: boolean;
+  names: Record<number, string>;
+}) {
   const forced = v.options.length === 1;
   const side = v.maker ? 'makers' : 'defenders';
   return (
@@ -218,6 +281,26 @@ function Verdict({ v, names }: { v: PlayVerdict; names: Record<number, string> }
         )}
       </p>
       <HindsightNote />
+      {!forced && (
+        <p className="mt-2 text-sm text-white/85">
+          {fairPending ? (
+            <span className="text-white/50">Checking what {names[v.seat]} could see…</span>
+          ) : !fair || fair.grade === 'sound' ? (
+            <span className="font-semibold text-white">✓ A sound choice</span>
+          ) : fair.grade === 'close' ? (
+            <>
+              <span className="font-semibold text-white">≈ A close call.</span> <CardText card={fair.best} /> was slightly
+              better on average ({fair.cost.toFixed(2)} points).
+            </>
+          ) : (
+            <>
+              <span className="font-semibold text-white">✗ A mistake.</span> <CardText card={fair.best} /> was the better bet,
+              by about {fair.cost.toFixed(1)} points on average.
+            </>
+          )}
+          <span className="block mt-1 text-[11px] uppercase tracking-wider text-white/45">With what they could see</span>
+        </p>
+      )}
       {!forced && (
         <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Every legal card and where it leads">
           {v.options.map((o) => {

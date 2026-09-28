@@ -7,7 +7,7 @@ export type PublicSeatInfo = {
   hand?: Card[]; // present only for self-view
 };
 
-export type RedactedState = Omit<GameState, 'hands' | 'kitty' | 'seed' | 'bidLog'> & {
+export type RedactedState = Omit<GameState, 'hands' | 'kitty' | 'seed' | 'bidLog' | 'dealerDiscard'> & {
   seats: Record<SeatIndex, PublicSeatInfo>;
   /** For player viewers: their legal-play card ids. For spectators: []. */
   legalPlayIds: string[];
@@ -38,7 +38,7 @@ function slimHand(h: HandSummary): HandSummary {
  * - viewerSeat=N    → player N: their own hand visible, others hidden.
  *
  * The kitty (the three buried cards under the up-card) and the random seed are
- * NEVER sent to clients. The dealer's discard is dropped from state entirely.
+ * NEVER sent to clients, and neither is the dealer's discard.
  */
 export function redactState(state: GameState, viewerSeat: SeatIndex | null): RedactedState {
   const seats: Record<SeatIndex, PublicSeatInfo> = {
@@ -53,7 +53,7 @@ export function redactState(state: GameState, viewerSeat: SeatIndex | null): Red
       hand: state.hands[viewerSeat].slice(),
     };
   }
-  const { hands: _hands, kitty: _kitty, seed: _seed, bidLog: _bidLog, ...rest } = state;
+  const { hands: _hands, kitty: _kitty, seed: _seed, bidLog: _bidLog, dealerDiscard: _discard, ...rest } = state;
   return {
     ...rest,
     // Drop the heavy hand-level capture (bids, per-trick cards) from in-play

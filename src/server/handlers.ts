@@ -2,6 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { applyAction, createGame } from './engine/game';
 import { chooseBotAction } from './engine/bot';
+import { strongAction } from './bot-pool';
 import { redactState } from './engine/redact';
 import { roomManager, nextHostPlayerId, stripControlChars, Room } from './rooms';
 import {
@@ -16,6 +17,7 @@ import {
   ALL_SUITS,
   TEAM_OF,
   type Action,
+  type GameState,
   type HandSummary,
   type SeatIndex,
   type Suit,
@@ -169,6 +171,7 @@ function snapshot(room: Room, viewerSeat: SeatIndex | null): RoomSnapshot {
     hostPlayerId: room.hostPlayerId,
     spectatorCount: room.spectators.length,
     full: room.seats.every((s) => !!s),
+    botLevel: room.botLevel,
     state: redactState(room.state, viewerSeat),
   };
 }
@@ -319,6 +322,10 @@ function scheduleAutoNextHand(io: IO, room: Room) {
 }
 
 const BOT_DELAY_MS = 700;
+/** Headroom kept between a strong bot's thinking budget and its move. */
+const STRONG_MARGIN_MS = 150;
+/** The strong bot's think in progress per room (weak: dies with the room). */
+const inFlight = new WeakMap<Room, { state: GameState; seat: SeatIndex; promise: ReturnType<typeof strongAction> }>();
 /** After a trick is taken we delay so the client animation has time to play. */
 const POST_TRICK_DELAY_MS = 2100;
 
@@ -339,25 +346,50 @@ function scheduleBotTick(io: IO, room: Room) {
   if (room.state.sittingOut.includes(turnSeat)) return;
 
   const delay = room.trickJustCompleted ? POST_TRICK_DELAY_MS : BOT_DELAY_MS;
+  // A strong bot starts thinking now, on a worker thread, and acts once the usual
+  // pause is over; the pause (less a margin) is its thinking budget, so it adds
+  // no delay. Anything wrong with its answer falls back to the heuristic bot.
+  // Broadcasts that don't change the game (a join, a reconnect) re-run this, so
+  // reuse a think already under way for the same position.
+  const stateAtTurn = room.state;
+  let thinking: ReturnType<typeof strongAction> | null = null;
+  if (room.botLevel === 'strong') {
+    const prior = inFlight.get(room);
+    if (prior && prior.state === stateAtTurn && prior.seat === turnSeat) thinking = prior.promise;
+    else {
+      thinking = strongAction(room.state, turnSeat, Math.max(100, delay - STRONG_MARGIN_MS));
+      inFlight.set(room, { state: stateAtTurn, seat: turnSeat, promise: thinking });
+    }
+  }
 
-  room.botTimer = setTimeout(() => {
+  room.botTimer = setTimeout(async () => {
     room.botTimer = null;
+    const strong = thinking ? await thinking : null;
     if (!roomManager.get(room.code)) return; // room gone
-    // Re-validate: still this bot's turn in an actionable phase.
+    // Re-validate: still this bot's turn, on the same state it thought about.
+    if (room.state !== stateAtTurn) return;
     if (!ACTIONABLE_PHASES.has(room.state.phase) || room.state.turn !== turnSeat) return;
     const s = room.seats[turnSeat];
     if (!s || !s.isBot) return;
-    let action: Action;
-    try {
-      action = chooseBotAction(room.state, turnSeat);
-    } catch (e) {
+    const heuristicMove = () => {
+      let action: Action;
+      try {
+        action = chooseBotAction(room.state, turnSeat);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error(`bot error in room ${room.code}:`, (e as Error).message);
+        return;
+      }
+      applyAndBroadcast(io, room, action, (msg) => {
+        // eslint-disable-next-line no-console
+        console.error(`bot error in room ${room.code}:`, msg);
+      });
+    };
+    if (!strong) return heuristicMove();
+    applyAndBroadcast(io, room, strong.action, (msg) => {
       // eslint-disable-next-line no-console
-      console.error(`bot error in room ${room.code}:`, (e as Error).message);
-      return;
-    }
-    applyAndBroadcast(io, room, action, (msg) => {
-      // eslint-disable-next-line no-console
-      console.error(`bot error in room ${room.code}:`, msg);
+      console.error(`strong bot move rejected in room ${room.code}: ${msg}; using the heuristic`);
+      heuristicMove();
     });
   }, delay);
 }
@@ -826,6 +858,15 @@ export function attachHandlers(io: IO) {
       for (let i = 0; i < 4; i++) {
         if (!room.seats[i]) room.seats[i] = botSeat(room, i as SeatIndex);
       }
+      broadcast(io, room);
+    });
+
+    on(socket, 'room:setBotLevel', (payload) => {
+      if (!isObj(payload) || (payload.level !== 'strong' && payload.level !== 'easy'))
+        return err(socket, 'invalid bot level');
+      const room = hostLobbyRoom(socket, 'change bots');
+      if (!room) return;
+      room.botLevel = payload.level;
       broadcast(io, room);
     });
 

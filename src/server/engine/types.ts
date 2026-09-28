@@ -80,6 +80,9 @@ export type GameState = {
   hands: Record<SeatIndex, Card[]>;
   /** Cards in the kitty (not in any hand or upcard). */
   kitty: Card[];
+  /** The card the dealer discarded this hand, if any. Server-only: known to the
+   *  dealer alone, so redactState never sends it (the dealer's bot reads it). */
+  dealerDiscard?: Card | null;
   /** Card turned up at start of the hand for round-1 bidding. */
   upcard: Card | null;
   /** When dealer takes up the upcard, it moves into their hand and `upcardTaken` records that. */

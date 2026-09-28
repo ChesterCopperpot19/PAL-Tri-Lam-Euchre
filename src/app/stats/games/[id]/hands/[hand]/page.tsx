@@ -8,7 +8,7 @@ import { SuitGlyph } from '@/components/Card';
 import HandReplay, { BidLine } from '@/components/analyzer/HandReplay';
 import MiniCard from '@/components/analyzer/MiniCard';
 import { handResult, seatNames, useGameRecord } from '@/components/analyzer/useGameRecord';
-import { useGameAnalysis } from '@/lib/solver/useHandAnalysis';
+import { useFairGrades, useGameAnalysis } from '@/lib/solver/useHandAnalysis';
 
 export default function HandReplayPage() {
   const { id, hand } = useParams<{ id: string; hand: string }>();
@@ -18,6 +18,7 @@ export default function HandReplayPage() {
   const ready = rec.status === 'ready' ? rec : null;
   // Solve the hand on screen first; the rest of the game follows in the background.
   const analyses = useGameAnalysis(ready?.fullHands ? id : null, ready?.fullHands ?? undefined, n - 1);
+  const fair = useFairGrades(ready?.fullHands ? id : null, ready?.fullHands ?? undefined, n - 1);
   const gameHref = `/stats/games/${encodeURIComponent(id)}`;
 
   const hands = ready?.fullHands ?? null;
@@ -76,6 +77,7 @@ export default function HandReplayPage() {
             hand={h}
             analysis={analyses ? analyses[n - 1] : undefined}
             names={names}
+            fair={fair}
             initialStep={card}
           />
 

@@ -16,7 +16,7 @@ const http = createServer();
 const io = new Server(http, { path: '/api/socket' });
 attachHandlers(io as any);
 
-const events = ['room:join','room:start','room:nextHand','room:rematch','room:promote','room:moveSeat','room:addBot','room:removeBot','room:fillBots','rooms:list','stats:get','stats:hands','stats:add','stats:delete','bid:order','bid:pass','bid:call','farmers:redeal','discard:card','play:card','chat:send'];
+const events = ['room:join','room:start','room:nextHand','room:rematch','room:promote','room:moveSeat','room:addBot','room:removeBot','room:fillBots','room:setBotLevel','rooms:list','stats:get','stats:hands','stats:add','stats:delete','bid:order','bid:pass','bid:call','farmers:redeal','discard:card','play:card','chat:send'];
 const payloads: unknown[] = [undefined, null, 0, 'x', [], {}, { seat: 1.5 }, { seat: 'length' }, { seat: -1 }, { seat: '__proto__' }, { suit: 'X', alone: 1 }, { cardId: { length: 3 } }, { text: { length: 5 } }, { playerId: {}, seat: 7 }, { id: 5, key: null }, { code: [], name: {}, playerId: 42 }];
 
 http.listen(0, async () => {
