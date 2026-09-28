@@ -32,8 +32,8 @@ function focusableIn(container: HTMLElement): HTMLElement[] {
  */
 export function useModal<T extends HTMLElement = HTMLDivElement>(
   onClose: () => void,
-  opts?: { initialFocus?: RefObject<HTMLElement> }
-): RefObject<T> {
+  opts?: { initialFocus?: RefObject<HTMLElement | null> }
+): RefObject<T | null> {
   const ref = useRef<T>(null);
   // Latest onClose without re-binding listeners every render.
   const onCloseRef = useRef(onClose);
