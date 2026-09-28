@@ -10,7 +10,9 @@ import next from 'next';
 // picks it up from .env. Safe to call early — the DB pool is created lazily.
 loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production');
 import { Server as IOServer } from 'socket.io';
-import { attachHandlers } from './src/server/handlers';
+import { attachHandlers, restoreRooms } from './src/server/handlers';
+import { flushRooms, saveRoomSoon } from './src/server/room-store';
+import { roomManager } from './src/server/rooms';
 import { botStats, warmBotPool } from './src/server/bot-pool';
 import type {
   ClientToServerEvents,
@@ -87,6 +89,29 @@ async function main() {
   attachHandlers(io);
   // Load the strong bot's worker now, not on the first bot move.
   warmBotPool();
+  // Bring back games that were in progress before this restart or deploy.
+  const restored = await restoreRooms(io);
+  if (restored) {
+    // eslint-disable-next-line no-console
+    console.log(`> restored ${restored} room${restored === 1 ? '' : 's'} from before the restart`);
+  }
+
+  // Render sends SIGTERM before stopping the old instance: save every room first.
+  let stopping = false;
+  const shutdown = (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    // eslint-disable-next-line no-console
+    console.log(`> ${signal}: saving rooms before exit`);
+    const hardStop = setTimeout(() => process.exit(0), 8000);
+    for (const room of roomManager.list()) saveRoomSoon(room);
+    flushRooms().finally(() => {
+      clearTimeout(hardStop);
+      process.exit(0);
+    });
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 
   httpServer.listen(port, hostname, () => {
     // eslint-disable-next-line no-console

@@ -1,6 +1,7 @@
 import { createGame } from './engine/game';
 import { GameState, SeatIndex } from './engine/types';
 import { ChatMessage, RoomMember } from '@/lib/shared-types';
+import { deleteRoomSoon, type SavedRoom } from './room-store';
 
 export type Seat = {
   playerId: string;
@@ -51,9 +52,17 @@ export type Room = {
   /** How the room's bots play: 'strong' (sampling + double-dummy search on a
    *  worker thread) or 'easy' (the original heuristic). Host picks in the lobby. */
   botLevel: BotLevel;
+  /** Set when the room was restored after a server restart: absent players get
+   *  a longer grace before anyone plays for them. */
+  restoredAt?: number;
 };
 
 export type BotLevel = 'strong' | 'easy';
+
+/** After a restart, how long players get to reconnect before a bot plays their turn. */
+export const RESTART_GRACE_MS = 3 * 60_000;
+/** A restored room nobody reconnects to within this long is closed. */
+const RESTORED_ABANDON_MS = 15 * 60_000;
 
 const DISCONNECT_GRACE_MS = 60_000;
 /** Hard cap on concurrent rooms — protects memory against a create-room loop. */
@@ -119,6 +128,43 @@ export class RoomManager {
     return room;
   }
 
+  /** Bring back a room saved before a restart. Every human seat starts
+   *  disconnected; their browsers reconnect and reclaim it with their token. */
+  restore(saved: SavedRoom): Room | null {
+    if (this.rooms.has(saved.code) || this.rooms.size >= MAX_ROOMS) return null;
+    const now = Date.now();
+    const room: Room = {
+      code: saved.code,
+      hostPlayerId: saved.hostPlayerId,
+      seats: saved.seats.map((s) =>
+        s ? { ...s, socketId: null, disconnectedAt: s.isBot ? null : now } : null,
+      ),
+      spectators: [],
+      state: saved.state,
+      chatLog: saved.chatLog ?? [],
+      rateLimit: new Map(),
+      createdAt: saved.createdAt,
+      botTimer: null,
+      botLevel: saved.botLevel ?? 'strong',
+      handEndTimer: null,
+      turnTimer: null,
+      lastTrickCount: saved.lastTrickCount ?? saved.state.completedTricks.length,
+      trickJustCompleted: false,
+      statsRecorded: saved.statsRecorded,
+      startedTs: saved.startedTs,
+      restoredAt: now,
+    };
+    this.rooms.set(room.code, room);
+    // If nobody comes back, don't keep it forever.
+    setTimeout(() => {
+      const r = this.rooms.get(room.code);
+      if (r !== room) return;
+      const anyone = r.seats.some((s) => s && !s.isBot && s.socketId) || r.spectators.length > 0;
+      if (!anyone) this.delete(room.code);
+    }, RESTORED_ABANDON_MS).unref();
+    return room;
+  }
+
   get(code: string): Room | undefined {
     return this.rooms.get(code.toUpperCase());
   }
@@ -131,7 +177,7 @@ export class RoomManager {
       if (room.handEndTimer) clearTimeout(room.handEndTimer);
       if (room.turnTimer) clearTimeout(room.turnTimer);
     }
-    this.rooms.delete(code.toUpperCase());
+    if (this.rooms.delete(code.toUpperCase())) deleteRoomSoon(code.toUpperCase());
   }
 
   list(): Room[] {

@@ -19,7 +19,9 @@ const MAX_MATCHES = 5000;
 let pool: Pool | null | undefined;
 let schemaReady: Promise<void> | null = null;
 
-function getPool(): Pool | null {
+/** The shared Postgres pool, or null when DATABASE_URL isn't set (file mode).
+ *  Also used by the room store. */
+export function getPool(): Pool | null {
   if (pool !== undefined) return pool;
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -31,7 +33,8 @@ function getPool(): Pool | null {
     // Neon (and most managed Postgres) require TLS. The certificate chain is
     // signed by a public CA, so verify it (default). PGSSL_INSECURE=1 is an
     // escape hatch for a host whose Node lacks the root store.
-    ssl: { rejectUnauthorized: process.env.PGSSL_INSECURE !== '1' },
+    // An explicit sslmode=disable (a local or CI database) turns TLS off.
+    ssl: /[?&]sslmode=disable\b/.test(url) ? false : { rejectUnauthorized: process.env.PGSSL_INSECURE !== '1' },
     max: 5,
   });
   pool.on('error', (e) => {
