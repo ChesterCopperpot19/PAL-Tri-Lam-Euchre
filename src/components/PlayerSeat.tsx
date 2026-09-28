@@ -2,8 +2,10 @@
 import { CardBack } from './Card';
 import type { RoomMember } from '@/lib/shared-types';
 
+/** An opponent's or partner's seat: card stack above a name plate. Sized to fit a
+ *  narrow grid cell, so long names truncate (full name in the label and tooltip)
+ *  and badges wrap onto a second line instead of widening the plate. */
 export default function PlayerSeat({
-  position,
   member,
   handCount,
   isDealer,
@@ -14,7 +16,6 @@ export default function PlayerSeat({
   showTricks,
   winFlash = false,
 }: {
-  position: 'top' | 'left' | 'right';
   member?: RoomMember;
   handCount: number;
   isDealer: boolean;
@@ -28,33 +29,32 @@ export default function PlayerSeat({
   /** Brief gold pulse when this seat just won a trick. */
   winFlash?: boolean;
 }) {
-  const layoutClass =
-    position === 'top'
-      ? 'flex-col-reverse'
-      : position === 'left'
-        ? 'flex-row-reverse'
-        : 'flex-row';
+  const name = member?.name ?? 'Empty';
 
   return (
-    <div className={`flex items-center gap-2 ${layoutClass}`}>
+    <div
+      role="group"
+      aria-label={name}
+      className="flex flex-col-reverse items-center gap-2 max-w-full min-w-0"
+    >
       <div
-        className={`px-3 py-1.5 rounded-lg bg-black/45 border border-white/10 flex items-center gap-2 ${
+        className={`max-w-full px-2 sm:px-3 py-1.5 rounded-lg bg-black/45 border border-white/10 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 ${
           isTurn ? 'turn-ring' : ''
         } ${winFlash ? 'seat-win-flash' : ''}`}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0 max-w-full">
           <span
             aria-hidden="true"
             title={member?.connected ? 'Connected' : 'Disconnected'}
-            className={`inline-block w-2 h-2 rounded-full ${
+            className={`inline-block shrink-0 w-2 h-2 rounded-full ${
               member?.connected ? 'bg-gold' : 'bg-slate-400'
             }`}
           />
           <span className="sr-only">
             {member?.connected ? 'connected' : 'disconnected'}
           </span>
-          <span className="text-sm font-medium text-white/90">
-            {member?.name ?? 'Empty'}
+          <span className="truncate text-sm font-medium text-white/90" title={name}>
+            {name}
           </span>
         </div>
         {isDealer && (
@@ -81,7 +81,7 @@ export default function PlayerSeat({
           </span>
         )}
       </div>
-      <div className="flex" style={{ minWidth: 60, minHeight: 60 }}>
+      <div className="flex justify-center" style={{ minHeight: 60 }}>
         {handCount > 0 ? (
           <div className={`relative ${sittingOut ? 'opacity-30 grayscale' : ''}`}>
             <CardBack size="sm" count={handCount} />

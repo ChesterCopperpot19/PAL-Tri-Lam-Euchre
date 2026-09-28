@@ -80,6 +80,19 @@ body {
     0 30px 60px rgba(0,0,0,0.55);
 }
 
+/* Table layout. The trick area is square and sized to whatever width is left in
+   the table column (container units), so the felt row can never overflow it.
+   Below md the side seats sit in the row above the felt, so the felt only gives
+   up its own padding (p-6, then sm:p-10). From md the side seats flank the felt:
+   each is allowed 9rem, plus a 1.5rem gap, plus the felt's 5rem of padding.
+   This only ever tightens the trick area's existing 20rem/36vh/60vw caps. */
+.table-area { container-type: inline-size; }
+@supports (width: 1cqi) {
+  .table-area { --trick-fit: calc(100cqi - 3rem); }
+  @media (min-width: 640px) { .table-area { --trick-fit: calc(100cqi - 5rem); } }
+  @media (min-width: 768px) { .table-area { --trick-fit: calc(100cqi - 26rem); } }
+}
+
 /* Card aesthetics. */
 .card-face {
   background: linear-gradient(180deg, #fdfcf7 0%, #f3eedd 100%);
