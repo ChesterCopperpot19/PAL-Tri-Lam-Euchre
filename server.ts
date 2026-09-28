@@ -11,7 +11,7 @@ import next from 'next';
 loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production');
 import { Server as IOServer } from 'socket.io';
 import { attachHandlers } from './src/server/handlers';
-import { botStats } from './src/server/bot-pool';
+import { botStats, warmBotPool } from './src/server/bot-pool';
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -85,6 +85,8 @@ async function main() {
   });
 
   attachHandlers(io);
+  // Load the strong bot's worker now, not on the first bot move.
+  warmBotPool();
 
   httpServer.listen(port, hostname, () => {
     // eslint-disable-next-line no-console

@@ -7,6 +7,10 @@ import type { GameState, SeatIndex } from '@/server/engine/types';
 
 type Job = { id: number; state: GameState; seat: SeatIndex; budgetMs: number; seed: number };
 
+// Loading this file (and compiling it under tsx) takes seconds on a slow host,
+// so say when we're ready; until then the server uses the heuristic bot.
+parentPort!.postMessage({ ready: true });
+
 parentPort!.on('message', (job: Job) => {
   try {
     const r = chooseStrongAction(job.state, job.seat, { budgetMs: job.budgetMs, seed: job.seed });

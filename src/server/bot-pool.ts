@@ -11,6 +11,8 @@ type Result = { action: Action; samples: number; ms: number };
 type Pending = { resolve: (r: Result | null) => void; timer: NodeJS.Timeout; phase: string };
 
 let worker: Worker | null = null;
+/** The worker has loaded and can take jobs. Until then requests fall back at once. */
+let ready = false;
 let nextId = 1;
 const pending = new Map<number, Pending>();
 
@@ -23,7 +25,11 @@ function getWorker(): Worker {
   // files and resolve the "@/..." path alias.
   const w = new Worker(path.join(__dirname, 'bot-worker.ts'), { execArgv: ['--require', 'tsx/cjs'] });
   w.unref(); // never keep the process alive on its own
-  w.on('message', (m: { id: number; ok: boolean; action?: Action; samples?: number; ms?: number; error?: string }) => {
+  w.on('message', (m: { ready?: boolean; id: number; ok: boolean; action?: Action; samples?: number; ms?: number; error?: string }) => {
+    if (m.ready) {
+      if (worker === w) ready = true;
+      return;
+    }
     const p = pending.get(m.id);
     if (!p) return;
     pending.delete(m.id);
@@ -41,7 +47,10 @@ function getWorker(): Worker {
   const fail = (why: string) => {
     // eslint-disable-next-line no-console
     console.error(`strong bot worker ${why}; falling back to the heuristic bot`);
-    if (worker === w) worker = null;
+    if (worker === w) {
+      worker = null;
+      ready = false;
+    }
     for (const [id, p] of pending) {
       clearTimeout(p.timer);
       record(p.phase, 0, 0, true);
@@ -52,7 +61,21 @@ function getWorker(): Worker {
   w.on('error', (e) => fail(`error: ${e.message}`));
   w.on('exit', (code) => fail(`exited (${code})`));
   worker = w;
+  ready = false;
   return w;
+}
+
+/** Whether the worker has loaded (for tests). */
+export const botPoolReady = () => ready;
+
+/** Start the worker early (at server boot) so it's loaded before the first game. */
+export function warmBotPool(): void {
+  try {
+    getWorker();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('could not start the strong bot worker:', (e as Error).message);
+  }
 }
 
 /**
@@ -67,6 +90,12 @@ export function strongAction(state: GameState, seat: SeatIndex, budgetMs: number
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('could not start the strong bot worker:', (e as Error).message);
+      resolve(null);
+      return;
+    }
+    if (!ready) {
+      // Still loading: play this move with the heuristic rather than wait.
+      record(state.phase, 0, 0, true, true);
       resolve(null);
       return;
     }
@@ -85,10 +114,10 @@ export function strongAction(state: GameState, seat: SeatIndex, budgetMs: number
 }
 
 // ---- anonymous timing record for tuning ----
-type Sample = { phase: string; ms: number; samples: number; fallback: boolean };
+type Sample = { phase: string; ms: number; samples: number; fallback: boolean; cold?: boolean };
 const recent: Sample[] = [];
-function record(phase: string, ms: number, samples: number, fallback: boolean) {
-  recent.push({ phase, ms, samples, fallback });
+function record(phase: string, ms: number, samples: number, fallback: boolean, cold = false) {
+  recent.push({ phase, ms, samples, fallback, cold });
   if (recent.length > 500) recent.shift();
 }
 
@@ -106,6 +135,8 @@ export function botStats() {
     return {
       decisions: rs.length,
       fallbacks: rs.length - ok.length,
+      /** Of the fallbacks: moves made while the worker was still loading. */
+      coldStart: rs.filter((r) => r.cold).length,
       ms: { p50: pct(ok.map((r) => r.ms), 0.5), p95: pct(ok.map((r) => r.ms), 0.95) },
       samples: { p50: pct(ok.map((r) => r.samples), 0.5), p5: pct(ok.map((r) => r.samples), 0.05) },
     };

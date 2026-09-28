@@ -8,7 +8,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { io as client } from 'socket.io-client';
 import { attachHandlers } from '../src/server/handlers';
-import { botStats } from '../src/server/bot-pool';
+import { botPoolReady, botStats, warmBotPool } from '../src/server/bot-pool';
 import type { RoomSnapshot } from '../src/lib/shared-types';
 
 setTimeout(() => {
@@ -19,8 +19,16 @@ setTimeout(() => {
 const http = createServer();
 const io = new Server(http, { path: '/api/socket' });
 attachHandlers(io as any);
+warmBotPool(); // as server.ts does at boot
 
 http.listen(0, async () => {
+  // Wait for the worker to load; moves before that would use the heuristic.
+  const w0 = Date.now();
+  while (!botPoolReady()) {
+    if (Date.now() - w0 > 30_000) throw new Error('bot worker never became ready');
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  console.log(`worker ready in ${Date.now() - w0} ms`);
   const url = `http://localhost:${(http.address() as any).port}`;
   const c = client(url, { path: '/api/socket' });
   await new Promise<void>((r) => c.on('connect', () => r()));
