@@ -329,39 +329,49 @@ function Table({
       )}
 
       {/* Main grid: table + chat */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3 p-2 sm:p-4">
-        {/* Table area */}
-        <div className="relative flex flex-col items-center justify-between min-h-0">
-          {/* Large always-on trump indicator (top-left of the table). */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-3 p-2 sm:p-4">
+        {/* Table area (a size container: the felt sizes itself to its width) */}
+        <div className="table-area relative flex flex-col items-center justify-between min-h-0">
+          {/* Large always-on trump indicator (top-left of the table). Below md that
+              corner holds the left seat; the header's trump pill covers it there. */}
           {state.trump && (
-            <div className="absolute top-1 left-1 z-10">
+            <div className="hidden md:block absolute top-1 left-1 z-10">
               <TrumpBadge trump={state.trump} />
             </div>
           )}
-          {/* Top seat */}
-          <div className="w-full flex justify-center mt-2">
-            <SeatBlock
-              relPos="top"
-              seat={seatAt('top')}
-              snapshot={snapshot}
-              tricks={tricksPerSeat}
-              showTricks={showTricks}
-              winFlash={pendingTrick?.winnerSeat === seatAt('top')}
-            />
-          </div>
+          {/* Opponents and felt. Below md the three opponents share the row above
+              the felt (left, partner, right) so the felt gets the full width; from
+              md the side seats flank the felt. */}
+          <div className="w-full mt-2 grid grid-cols-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 md:gap-x-6 gap-y-3">
+            <div className="col-start-2 row-start-1 min-w-0 max-w-full justify-self-center">
+              <SeatBlock
+                seat={seatAt('top')}
+                snapshot={snapshot}
+                tricks={tricksPerSeat}
+                showTricks={showTricks}
+                winFlash={pendingTrick?.winnerSeat === seatAt('top')}
+              />
+            </div>
+            <div className="col-start-1 row-start-1 md:row-start-2 min-w-0 max-w-full justify-self-start md:justify-self-end">
+              <SeatBlock
+                seat={seatAt('left')}
+                snapshot={snapshot}
+                tricks={tricksPerSeat}
+                showTricks={showTricks}
+                winFlash={pendingTrick?.winnerSeat === seatAt('left')}
+              />
+            </div>
+            <div className="col-start-3 row-start-1 md:row-start-2 min-w-0 max-w-full justify-self-end md:justify-self-start">
+              <SeatBlock
+                seat={seatAt('right')}
+                snapshot={snapshot}
+                tricks={tricksPerSeat}
+                showTricks={showTricks}
+                winFlash={pendingTrick?.winnerSeat === seatAt('right')}
+              />
+            </div>
 
-          {/* Middle row: left, felt+trick, right */}
-          <div className="w-full flex items-center justify-center gap-3 sm:gap-6">
-            <SeatBlock
-              relPos="left"
-              seat={seatAt('left')}
-              snapshot={snapshot}
-              tricks={tricksPerSeat}
-              showTricks={showTricks}
-              winFlash={pendingTrick?.winnerSeat === seatAt('left')}
-            />
-
-            <div className="felt p-6 sm:p-10 relative">
+            <div className="felt p-6 sm:p-10 relative row-start-2 col-span-3 md:col-span-1 md:col-start-2 justify-self-center">
               <TrickArea
                 plays={state.currentTrick.plays}
                 upcard={state.upcard}
@@ -386,15 +396,6 @@ function Table({
                 </div>
               )}
             </div>
-
-            <SeatBlock
-              relPos="right"
-              seat={seatAt('right')}
-              snapshot={snapshot}
-              tricks={tricksPerSeat}
-              showTricks={showTricks}
-              winFlash={pendingTrick?.winnerSeat === seatAt('right')}
-            />
           </div>
 
           {/* Bottom: action panel + own hand */}
@@ -552,14 +553,12 @@ function Table({
 }
 
 function SeatBlock({
-  relPos,
   seat,
   snapshot,
   tricks,
   showTricks,
   winFlash = false,
 }: {
-  relPos: 'left' | 'top' | 'right';
   seat: SeatIndex;
   snapshot: RoomSnapshot;
   tricks: Record<SeatIndex, number>;
@@ -571,7 +570,6 @@ function SeatBlock({
   const handCount = state.seats[seat].handCount;
   return (
     <PlayerSeat
-      position={relPos}
       member={member}
       handCount={handCount}
       isDealer={state.dealer === seat}
