@@ -6,6 +6,7 @@ import Link from 'next/link';
 import type { Session } from '@/lib/stats-sessions';
 import { formatDuration } from '@/lib/stats-sessions';
 import PlayerLink from './PlayerLink';
+import SessionPlayHighlights from './SessionPlayHighlights';
 
 export function sessionDateLabel(s: Session): string {
   try {
@@ -101,6 +102,8 @@ export default function SessionRecap({ session }: { session: Session }) {
           </div>
         </div>
       </div>
+
+      <SessionPlayHighlights session={s} />
     </section>
   );
 }

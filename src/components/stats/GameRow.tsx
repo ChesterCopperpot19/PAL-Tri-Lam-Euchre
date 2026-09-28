@@ -2,6 +2,7 @@
 // One recorded game — teams, score, date, hands, duration, source badge.
 // Shared by the dashboard's "Recent games" list and the /stats/games archive.
 
+import Link from 'next/link';
 import type { MatchRecord } from '@/lib/shared-types';
 import { gameDurationMs, formatDuration } from '@/lib/stats-sessions';
 import PlayerLink from './PlayerLink';
@@ -60,6 +61,13 @@ export default function GameRow({
           <span className="text-white/60 text-xs whitespace-nowrap">
             {m.finalScore.NS}–{m.finalScore.EW}
           </span>
+          <Link
+            href={`/stats/games/${encodeURIComponent(m.id)}`}
+            className="text-xs text-gold hover:underline underline-offset-2 whitespace-nowrap"
+            aria-label={`Game details, ${ns.join(' & ')} vs ${ew.join(' & ')}`}
+          >
+            {m.hands?.length && m.source !== 'manual' && m.source !== 'historical' ? 'Replay ›' : 'Details ›'}
+          </Link>
           {onDelete && (
             <button
               onClick={() => onDelete(m.id)}
