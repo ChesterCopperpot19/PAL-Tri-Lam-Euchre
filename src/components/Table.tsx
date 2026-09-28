@@ -2,8 +2,10 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import Hand from './Hand';
 import PlayerSeat from './PlayerSeat';
-import TrickArea, { type PendingTrick } from './TrickArea';
-import TrumpIndicator from './TrumpIndicator';
+import TrickArea from './TrickArea';
+import TableHeader from './TableHeader';
+import { useTrickAnimation } from './useTrickAnimation';
+import { useSoundPreference } from './useSoundPreference';
 import TrumpBanner from './TrumpBanner';
 import TrumpBadge from './TrumpBadge';
 import ScoreBoard from './ScoreBoard';
@@ -17,7 +19,6 @@ import type { RoomSnapshot, ChatMessage } from '@/lib/shared-types';
 import type { SeatIndex, Suit } from '@/server/engine/types';
 import { teamName, tricksBySeat } from '@/lib/format';
 import { sortHand } from '@/lib/hand-sort';
-import { playPing, unlockAudio } from '@/lib/sound';
 import Chat from './Chat';
 
 export type Handlers = {
@@ -110,67 +111,13 @@ function Table({
         ? 'Your turn to play'
         : 'Your turn to bid';
 
-  // After a trick is taken, hold all 4 cards visible for ~1.2s, then animate them
-  // toward the winning seat for ~0.75s. Suppresses the hand-end modal during the
-  // animation so the final trick is fully visible before the summary appears.
-  const [pendingTrick, setPendingTrick] = useState<PendingTrick | null>(null);
-  const prevTrickCountRef = useRef(0);
   // The "loner made" gag: a 5-second photo at hand-end when someone wins a loner
   // (went alone and was not euchred).
   const [lonerWonFx, setLonerWonFx] = useState(false);
   const lonerWonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showRules, setShowRules] = useState(false);
-  // Only `completedTricks.length` moving past `prevTrickCountRef` starts an
-  // animation, so re-runs from the phase dep (which only ever changes in the
-  // same snapshot as a length change) are no-ops mid-animation.
-  useEffect(() => {
-    const ct = state.completedTricks;
-    const len = ct.length;
-    if (len === 0) {
-      // New hand has been dealt; clear any leftover state.
-      prevTrickCountRef.current = 0;
-      setPendingTrick(null);
-      return;
-    }
-    if (len > prevTrickCountRef.current) {
-      const trick = ct[len - 1];
-      if (trick?.winner !== undefined && trick.plays.length > 0) {
-        setPendingTrick({
-          plays: trick.plays as PendingTrick['plays'],
-          winnerSeat: trick.winner as SeatIndex,
-          animFly: false,
-        });
-        // The game-winning trick: freeze it on the felt for 3s so everyone can
-        // see how the final hand was won, then reveal the winner screen (the
-        // GameOver modal is gated on !pendingTrick below). Held static — no fly.
-        if (state.phase === 'GAME_OVER') {
-          const holdT = setTimeout(() => {
-            setPendingTrick(null);
-            prevTrickCountRef.current = len;
-          }, 3000);
-          return () => clearTimeout(holdT);
-        }
-        const flyT = setTimeout(() => {
-          setPendingTrick((cur) => (cur ? { ...cur, animFly: true } : cur));
-        }, 1200);
-        const clearT = setTimeout(() => {
-          setPendingTrick(null);
-          // Mark this trick as fully processed only after the animation completes,
-          // so React Strict Mode's mount/unmount/mount cycle re-arms the timer
-          // instead of skipping it.
-          prevTrickCountRef.current = len;
-        }, 1200 + 750);
-        return () => {
-          clearTimeout(flyT);
-          clearTimeout(clearT);
-        };
-      }
-      prevTrickCountRef.current = len;
-    }
-    // `state.completedTricks` is a fresh array on every snapshot; depending on its
-    // identity would restart the fly animation mid-flight. Length + phase is the cue.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.completedTricks.length, state.phase]);
+  // Hold, then fly, each completed trick to its winner (see useTrickAnimation).
+  const pendingTrick = useTrickAnimation(state.completedTricks, state.phase);
 
   // When a hand ends on a *swept* loner (went alone AND took all 5 tricks — a
   // lone march), flash the celebration photo for 7 seconds. lastHand is set in
@@ -188,108 +135,22 @@ function Table({
   }, [lonerSwept]);
   useEffect(() => () => { if (lonerWonTimerRef.current) clearTimeout(lonerWonTimerRef.current); }, []);
 
-  // Sound preference (persisted). Default on.
-  const [soundOn, setSoundOn] = useState(true);
-  useEffect(() => {
-    try {
-      setSoundOn(localStorage.getItem('euchre.sound') !== 'off');
-    } catch {
-      /* ignore */
-    }
-  }, []);
-  const soundOnRef = useRef(soundOn);
-  soundOnRef.current = soundOn;
-
-  // Browsers block audio until the user interacts — unlock on the first gesture.
-  useEffect(() => {
-    const unlock = () => unlockAudio();
-    window.addEventListener('pointerdown', unlock, { once: true });
-    window.addEventListener('keydown', unlock, { once: true });
-    return () => {
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('keydown', unlock);
-    };
-  }, []);
-
-  // Ping the moment it becomes the viewer's turn (only the player whose turn it is).
-  const prevMyTurnRef = useRef(false);
-  useEffect(() => {
-    if (isMyTurnNow && !prevMyTurnRef.current && soundOnRef.current) {
-      playPing();
-    }
-    prevMyTurnRef.current = isMyTurnNow;
-  }, [isMyTurnNow]);
-
-  function toggleSound() {
-    setSoundOn((on) => {
-      const next = !on;
-      try {
-        localStorage.setItem('euchre.sound', next ? 'on' : 'off');
-      } catch {
-        /* ignore */
-      }
-      if (next) {
-        unlockAudio();
-        playPing(); // confirm it's audible
-      }
-      return next;
-    });
-  }
+  const { soundOn, toggleSound } = useSoundPreference(isMyTurnNow);
 
   return (
     <div className="min-h-[100dvh] flex flex-col">
-      {/* Top bar */}
-      <header className="flex items-center justify-between px-3 sm:px-5 py-3 bg-black/40 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="text-xs uppercase tracking-[0.3em] text-white/60">Room</div>
-          <div className="font-display text-2xl text-gold tracking-widest">{snapshot.code}</div>
-          {isSpectator && (
-            <span className="bg-violet-600/30 border border-violet-400/50 text-violet-200 text-xs uppercase tracking-wider px-2 py-0.5 rounded">
-              👁 Spectator
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 bg-black/55 border border-white/10 rounded-full px-3 py-1.5 text-sm">
-            <span className="text-white/70 text-xs truncate max-w-[180px]" title={nsName}>{nsName}</span>
-            <span className="font-display text-gold text-lg leading-none">{state.scores.NS}</span>
-            <span className="text-white/30">·</span>
-            <span className="text-white/70 text-xs truncate max-w-[180px]" title={ewName}>{ewName}</span>
-            <span className="font-display text-gold text-lg leading-none">{state.scores.EW}</span>
-          </div>
-          <TrumpIndicator trump={state.trump} />
-          <button
-            onClick={toggleSound}
-            className="text-base leading-none hover:opacity-80"
-            aria-label={soundOn ? 'Mute turn sound' : 'Unmute turn sound'}
-            aria-pressed={soundOn}
-            title={soundOn ? 'Turn sound on — tap to mute' : 'Turn sound off — tap to unmute'}
-          >
-            {soundOn ? '🔔' : '🔕'}
-          </button>
-          <button
-            onClick={() => setShowRules(true)}
-            className="text-xs text-white/60 hover:text-white"
-            title="Show the house rules"
-            aria-label="Show the house rules"
-          >
-            📖<span className="hidden sm:inline"> Rules</span>
-          </button>
-          <button
-            onClick={handlers.onLeave}
-            className="text-xs text-white/60 hover:text-white"
-          >
-            Leave
-          </button>
-        </div>
-      </header>
-      <div className="sm:hidden flex items-center justify-center gap-2 py-1.5 px-2 bg-black/35 border-b border-white/10 text-sm flex-wrap">
-        <span className="text-white/70 text-xs truncate max-w-[40%]" title={nsName}>{nsName}</span>
-        <span className="font-display text-gold text-lg leading-none">{state.scores.NS}</span>
-        <span className="text-white/30">·</span>
-        <span className="text-white/70 text-xs truncate max-w-[40%]" title={ewName}>{ewName}</span>
-        <span className="font-display text-gold text-lg leading-none">{state.scores.EW}</span>
-      </div>
+      <TableHeader
+        code={snapshot.code}
+        isSpectator={isSpectator}
+        nsName={nsName}
+        ewName={ewName}
+        scores={state.scores}
+        trump={state.trump}
+        soundOn={soundOn}
+        onToggleSound={toggleSound}
+        onShowRules={() => setShowRules(true)}
+        onLeave={handlers.onLeave}
+      />
 
       {/* Big, unmistakable "it's your turn" banner — only for the player to act. */}
       {isMyTurnNow && (
