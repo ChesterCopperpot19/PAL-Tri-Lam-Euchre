@@ -13,10 +13,12 @@ import { computeBadges, badgesFor } from '@/lib/stats-achievements';
 import { computeClutch, type ClutchRow } from '@/lib/stats-clutch';
 import { RadarChart, EloLineChart } from '@/components/stats/ProfileCharts';
 import { earnedDateLabel } from '@/components/stats/AchievementsStrip';
+import DecisionsTab from '@/components/stats/DecisionsTab';
 
-type Tab = 'overview' | 'partners' | 'trends' | 'field';
+type Tab = 'overview' | 'decisions' | 'partners' | 'trends' | 'field';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'decisions', label: 'Decisions' },
   { id: 'partners', label: 'Partnerships' },
   { id: 'trends', label: 'Trends' },
   { id: 'field', label: 'Vs. The Field' },
@@ -251,6 +253,9 @@ export default function PlayerProfilePage() {
               </section>
             </div>
           )}
+
+          {/* ── Decisions: graded only when opened (it's heavy the first time) ── */}
+          {tab === 'decisions' && <DecisionsTab name={canonical} games={human} />}
 
           {/* ── Partnerships ── */}
           {tab === 'partners' && <PartnersTab profile={profile} />}
