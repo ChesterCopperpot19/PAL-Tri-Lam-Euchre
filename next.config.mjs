@@ -29,6 +29,8 @@ const securityHeaders = [
 
 const nextConfig = {
   reactStrictMode: true,
+  // No next/image anywhere; keep the optimizer off (server.ts also blocks it).
+  images: { unoptimized: true },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
