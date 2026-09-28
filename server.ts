@@ -11,6 +11,7 @@ import next from 'next';
 loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production');
 import { Server as IOServer } from 'socket.io';
 import { attachHandlers } from './src/server/handlers';
+import { botStats } from './src/server/bot-pool';
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -52,6 +53,13 @@ async function main() {
   await app.prepare();
 
   const httpServer = createServer((req, res) => {
+    // Strong-bot decision timings (anonymous percentiles, no game data), for
+    // tuning the thinking budget on the live server.
+    if (req.method === 'GET' && req.url === '/api/bot-stats') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(botStats()));
+      return;
+    }
     // Defer URL parsing to Next; it handles WHATWG URL internally.
     handle(req, res);
   });

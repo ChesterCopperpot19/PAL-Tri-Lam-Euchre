@@ -31,7 +31,8 @@ export const DEFAULT_OPTIONS: StrongOptions = {
   minSamples: 8,
   maxSamples: 60,
   seed: 1,
-  bidThreshold: 0,
+  // Best of 0 / 0.25 / 0.5 in the duplicate tournament (scripts/bot-tournament.ts).
+  bidThreshold: 0.25,
 };
 
 export type StrongResult = { action: Action; samples: number; ms: number };

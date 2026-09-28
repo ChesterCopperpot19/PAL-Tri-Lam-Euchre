@@ -3,6 +3,7 @@ import { analyzeHand } from '../src/lib/solver/analyze';
 import { createSolver, makerPoints } from '../src/lib/solver/dd';
 import { infoFromState, rng, sampleDeal } from '../src/lib/solver/infoset';
 import { chooseStrongAction } from '../src/lib/solver/strong-bot';
+import { fairGrades, FAIR_TOLERANCE } from '../src/lib/solver/fair';
 import { chooseBotAction } from '../src/server/engine/bot';
 import { applyAction, createGame } from '../src/server/engine/game';
 import { effectiveSuit, legalPlays } from '../src/server/engine/rules';
@@ -150,5 +151,32 @@ describe('strong bot', () => {
       });
     }
     expect(compared).toBeGreaterThan(20);
+  });
+});
+
+describe('fair grading (with what they could see)', () => {
+  const hands = SEEDS.slice(0, 15).map((s) => botHand(s));
+
+  it('grades every real choice and skips forced cards', () => {
+    for (const h of hands) {
+      const f = fairGrades(h, 40, 3)!;
+      const a = analyzeHand(h)!;
+      expect(f).toHaveLength(a.plays.length);
+      a.plays.forEach((p, i) => {
+        if (p.options.length === 1) expect(f[i]).toBeNull();
+        else {
+          const v = f[i]!;
+          expect(v.samples).toBe(40); // a consistent deal was always found
+          expect(v.options.map((o) => o.card.id)).toEqual(p.options.map((o) => o.card.id));
+          expect(v.cost).toBeGreaterThanOrEqual(0);
+          if (v.cost <= FAIR_TOLERANCE) expect(v.grade).toBe('sound');
+          else expect(['close', 'mistake']).toContain(v.grade);
+        }
+      });
+    }
+  });
+
+  it('is reproducible for a given seed', () => {
+    expect(fairGrades(hands[0], 30, 7)).toEqual(fairGrades(hands[0], 30, 7));
   });
 });

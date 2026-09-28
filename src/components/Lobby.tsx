@@ -54,6 +54,7 @@ export default function Lobby({
   onFillBots,
   onRemoveBot,
   onMoveSeat,
+  onSetBotLevel,
   onLeave,
 }: {
   snapshot: RoomSnapshot;
@@ -64,6 +65,7 @@ export default function Lobby({
   onFillBots: () => void;
   onRemoveBot: (seat: 0 | 1 | 2 | 3) => void;
   onMoveSeat: (seat: 0 | 1 | 2 | 3) => void;
+  onSetBotLevel: (level: 'strong' | 'easy') => void;
   onLeave: () => void;
 }) {
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -221,6 +223,10 @@ export default function Lobby({
         })}
       </div>
 
+      {(isHost || snapshot.members.some((m) => m.isBot)) && (
+        <BotLevelPicker level={snapshot.botLevel} canChange={isHost} onChange={onSetBotLevel} />
+      )}
+
       {isHost && !snapshot.full && (
         <div className="flex justify-center">
           <button
@@ -257,6 +263,47 @@ export default function Lobby({
           {canStart ? 'Start Game' : startBlockedReason}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Strong bots think ahead over possible deals; Easy bots play the old rules of
+ *  thumb. Only the host can switch; everyone sees which is on. */
+function BotLevelPicker({
+  level,
+  canChange,
+  onChange,
+}: {
+  level: 'strong' | 'easy';
+  canChange: boolean;
+  onChange: (level: 'strong' | 'easy') => void;
+}) {
+  const opts = [
+    { v: 'strong' as const, label: 'Strong', hint: 'thinks ahead over the possible deals' },
+    { v: 'easy' as const, label: 'Easy', hint: 'plays simple rules of thumb' },
+  ];
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <div role="radiogroup" aria-label="Bot strength" className="inline-flex rounded-lg border border-white/15 bg-black/35 p-1">
+        {opts.map((o) => (
+          <button
+            key={o.v}
+            role="radio"
+            aria-checked={level === o.v}
+            disabled={!canChange}
+            onClick={() => level !== o.v && onChange(o.v)}
+            className={`px-3 py-1.5 rounded-md text-xs uppercase tracking-wider disabled:cursor-default ${
+              level === o.v ? 'bg-gold text-black font-semibold' : 'text-white/70 hover:text-white enabled:hover:bg-white/10'
+            }`}
+          >
+            {o.label} bots
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] text-white/55">
+        {opts.find((o) => o.v === level)!.label} bots {opts.find((o) => o.v === level)!.hint}
+        {!canChange && ' · the host picks'}
+      </p>
     </div>
   );
 }
