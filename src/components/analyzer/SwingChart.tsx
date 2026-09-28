@@ -130,6 +130,8 @@ export default function SwingChart({
             <line x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={H - PAD.bottom} stroke="rgba(255,255,255,0.22)" />
           )}
           <path d={d} fill="none" stroke={LINE} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+          {/* Position dot under the misplay markers, so a marker is never hidden. */}
+          <circle cx={x(shown)} cy={y(swing[shown])} r="4.5" fill={LINE} stroke={SURFACE} strokeWidth="2" />
           {/* Misplay markers, ringed in the surface color so they read over the line. */}
           {plays.map((p, i) =>
             p.cost > 0 ? (
@@ -144,7 +146,6 @@ export default function SwingChart({
               />
             ) : null,
           )}
-          <circle cx={x(shown)} cy={y(swing[shown])} r="4.5" fill={LINE} stroke={SURFACE} strokeWidth="2" />
         </svg>
 
       </div>
