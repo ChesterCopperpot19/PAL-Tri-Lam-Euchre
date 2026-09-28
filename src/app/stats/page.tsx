@@ -1,31 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getSocket } from '@/lib/socket-client';
-import type { MatchRecord, StatsPayload } from '@/lib/shared-types';
-import {
-  prepareGames,
-  computePlayers,
-  computeDuos,
-  computeHeadToHead,
-  computeSuperlatives,
-  filterMatches,
-  sortPlayers,
-  type Superlative,
-} from '@/lib/stats-analytics';
-import { computeElo, mostImproved } from '@/lib/stats-elo';
-import { computeBadges } from '@/lib/stats-achievements';
-import { computeClutch } from '@/lib/stats-clutch';
-import { computeSessions } from '@/lib/stats-sessions';
+import { useEffect, useMemo, useState } from 'react';
+import { sortPlayers, type Superlative } from '@/lib/stats-analytics';
+import { dashboardSuperlatives } from '@/lib/stats-superlatives';
 import { playersToCSV } from '@/lib/stats-csv';
-import { clearAdminKey, getAdminKey, promptAdminKey } from '@/lib/stats-admin-key';
+import { useStatsData } from '@/components/stats/useStatsData';
 import SuperlativeCards from '@/components/stats/SuperlativeCards';
-import StatsFilters, {
-  EMPTY_FILTERS,
-  matchFilterFor,
-  type StatsFilterState,
-} from '@/components/stats/StatsFilters';
+import StatsFilters, { EMPTY_FILTERS, type StatsFilterState } from '@/components/stats/StatsFilters';
 import Leaderboard, { type RankedRow, type LeaderKey } from '@/components/stats/Leaderboard';
 import AchievementsStrip from '@/components/stats/AchievementsStrip';
 import DuosSection from '@/components/stats/DuosSection';
@@ -69,9 +51,6 @@ function Section({
 }
 
 export default function StatsPage() {
-  const [data, setData] = useState<StatsPayload | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
   // Interactive controls.
   const [minGames, setMinGames] = useState(1); // leaderboard / efficiency qualification
   const [duoMin, setDuoMin] = useState(2); // min games together for best/worst duos
@@ -83,82 +62,30 @@ export default function StatsPage() {
   const [fullStats, setFullStats] = useState(true); // leaderboard: all stat columns (default on)
   const [showHands, setShowHands] = useState(false); // full hand-level data set (collapsed by default)
   const [showDealer, setShowDealer] = useState(false); // dealer analytics (loads heavy bid logs)
-  const [showLuck, setShowLuck] = useState(false);
-  const [showDecisions, setShowDecisions] = useState(false); // luck index (loads heavy trick logs)
+  const [showLuck, setShowLuck] = useState(false); // luck index (loads heavy trick logs)
+  const [showDecisions, setShowDecisions] = useState(false); // decision quality (grades every card)
 
   // Charts render client-only (canvas), so gate them until after mount.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // Admin unlock: deleting games requires the shared admin key (checked server-
-  // side). Kept in sessionStorage (see stats-admin-key.ts) so an admin enters it
-  // once per tab; delete controls stay hidden until unlocked. The real gate is on
-  // the server — this is just UX.
-  const [adminKey, setAdminKey] = useState<string | null>(null);
-  useEffect(() => {
-    setAdminKey(getAdminKey());
-  }, []);
-
-  // Ignore socket acks that land after this page has unmounted.
-  const alive = useRef(true);
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
-  const load = useCallback(() => {
-    getSocket().emit('stats:get', (payload) => {
-      if (!alive.current) return;
-      setData(payload);
-      setLoaded(true);
-    });
-  }, []);
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  function unlockAdmin() {
-    const k = promptAdminKey('Enter the stats admin key to enable deleting games:');
-    if (k) setAdminKey(k);
-  }
-  function lockAdmin() {
-    clearAdminKey();
-    setAdminKey(null);
-  }
-
-  function onDelete(id: string) {
-    if (!adminKey) return; // delete controls are hidden while locked
-    if (!window.confirm('Delete this game from the stats? This cannot be undone.')) return;
-    getSocket().emit('stats:delete', { id, key: adminKey }, (res) => {
-      if (res.ok) {
-        load();
-        return;
-      }
-      if (res.code === 'auth') {
-        lockAdmin();
-        window.alert(`${res.error}\n\nThe saved key was cleared — click “Admin” to re-enter it.`);
-      } else {
-        window.alert(res.error);
-      }
-    });
-  }
-
-  const allMatches = useMemo<MatchRecord[]>(() => data?.matches ?? [], [data]);
-  // Apply the date/source filters before computing anything.
-  const matches = useMemo(() => filterMatches(allMatches, matchFilterFor(filters)), [allMatches, filters]);
-  // Run the human-only filter + name canonicalization ONCE per history change;
-  // every compute function recognises the prepared array and skips its own pass.
-  const human = useMemo(() => prepareGames(matches), [matches]);
-  const players = useMemo(() => computePlayers(human), [human]);
-  const duos = useMemo(() => computeDuos(human), [human]);
-  const h2h = useMemo(() => computeHeadToHead(human), [human]);
-  const elo = useMemo(() => computeElo(human), [human]);
-  const badges = useMemo(() => computeBadges(human, players, elo), [human, players, elo]);
-  const improved = useMemo(() => mostImproved(elo), [elo]);
-  const clutch = useMemo(() => computeClutch(human), [human]);
-  const sessions = useMemo(() => computeSessions(human), [human]);
-  const lastSession = sessions.length ? sessions[sessions.length - 1] : null;
+  const {
+    data,
+    loaded,
+    adminKey,
+    unlockAdmin,
+    lockAdmin,
+    onDelete,
+    human,
+    players,
+    duos,
+    h2h,
+    elo,
+    badges,
+    clutch,
+    improved,
+    lastSession,
+  } = useStatsData(filters);
 
   // Lowest-Elo player among the qualified set (gets the WFEPE card + seahorse).
   const lowestEloName = useMemo<string | null>(() => {
@@ -170,83 +97,11 @@ export default function StatsPage() {
     return rated.reduce((lo, p) => (p.rating < lo.rating ? p : lo)).name;
   }, [players, elo, minGames]);
 
-  // Superlatives + Most-Improved + WFEPE (Elo-based) cards.
-  const superlatives = useMemo<Superlative[]>(() => {
-    const base = computeSuperlatives(players, minGames);
-    const earned = improved && improved.gain > 0;
-    const mi: Superlative = {
-      id: 'improved',
-      emoji: '📈',
-      title: 'Most Improved',
-      blurb: 'Biggest recent Elo gain',
-      player: earned ? improved!.name : null,
-      value: earned ? `+${improved!.gain}` : '—',
-      sub: earned ? 'Elo over recent games' : undefined,
-    };
-    const wfepe: Superlative = {
-      id: 'wfepe',
-      emoji: '🌊', // rendered as a seahorse in the card
-      title: 'WFEPE',
-      blurb: 'Lowest Elo rating',
-      player: lowestEloName,
-      value: lowestEloName ? `${elo.get(lowestEloName)?.rating ?? '—'}` : '—',
-      sub: lowestEloName ? 'lowest Elo' : undefined,
-    };
-
-    // ── Clutch cards (from the hand-by-hand score log) ──
-    const closeQualified = clutch.players.filter((p) => p.closeGames >= 3);
-    const closer = closeQualified.length
-      ? closeQualified.reduce((best, p) =>
-          p.closeWinPct > best.closeWinPct ||
-          (p.closeWinPct === best.closeWinPct && p.closeGames > best.closeGames)
-            ? p
-            : best
-        )
-      : null;
-    const closerCard: Superlative = {
-      id: 'closer',
-      emoji: '🔒',
-      title: 'The Closer',
-      blurb: 'Best record in close games (min 3, decided by ≤2)',
-      player: closer ? closer.name : null,
-      value: closer ? `${Math.round(closer.closeWinPct * 100)}%` : '—',
-      sub: closer ? `${closer.closeWins}–${closer.closeLosses} in close games` : undefined,
-    };
-
-    const cb = clutch.biggestComeback;
-    const comebackCard: Superlative = {
-      id: 'comeback',
-      emoji: '🚀',
-      title: 'Comeback Kings',
-      blurb: 'Biggest deficit ever overcome',
-      player: cb ? cb.names[0] : null,
-      players: cb ? cb.names : undefined,
-      value: cb ? `down ${cb.deficit}` : '—',
-      sub: cb
-        ? `won ${cb.match.finalScore[cb.team]}–${
-            cb.match.finalScore[cb.team === 'NS' ? 'EW' : 'NS']
-          }`
-        : undefined,
-    };
-
-    const heartbreak = clutch.players
-      .filter((p) => (p.blownLeads ?? 0) > 0)
-      .reduce<(typeof clutch.players)[number] | null>(
-        (worst, p) => (!worst || (p.blownLeads ?? 0) > (worst.blownLeads ?? 0) ? p : worst),
-        null
-      );
-    const heartbreakCard: Superlative = {
-      id: 'heartbreaker',
-      emoji: '💔',
-      title: 'The Heartbreaker',
-      blurb: 'Most 5+ point leads lost',
-      player: heartbreak ? heartbreak.name : null,
-      value: heartbreak ? `${heartbreak.blownLeads}` : '—',
-      sub: heartbreak ? 'blown 5+ point leads' : undefined,
-    };
-
-    return [mi, wfepe, closerCard, comebackCard, heartbreakCard, ...base];
-  }, [players, minGames, improved, lowestEloName, elo, clutch]);
+  // Superlatives + Most-Improved + WFEPE (Elo-based) + clutch cards.
+  const superlatives = useMemo<Superlative[]>(
+    () => dashboardSuperlatives(players, minGames, improved, lowestEloName, elo, clutch),
+    [players, minGames, improved, lowestEloName, elo, clutch],
+  );
 
   // Merge Elo onto each player for the leaderboard.
   const ranked = useMemo<RankedRow[]>(

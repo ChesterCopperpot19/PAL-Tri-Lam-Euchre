@@ -12,8 +12,8 @@ Kickoff message: **"Read docs/plans/hand-analyzer-roadmap.md and start Phase 0."
 | 2. Hand analyzer | Done, live | #4 |
 | 3. Strong bot and fair grading | Done, live. Beats the old bot by +0.14 points/hand on 2,000 duplicate deals; ~60 sampled deals per decision on Render (`/api/bot-stats`). | #5, #6 |
 | 3b. Decision-quality stats | Done, live: profile Decisions tab and a dashboard ranking, approved by the user once fair grading existed. | #7 |
-| 4. Durable rooms | Merged; live mid-game deploy test under way | #8 |
-| 5. Maintenance | Not started | |
+| 4. Durable rooms | Done, live. A bot room paused mid-hand survived a real redeploy with the same cards and played on. | #8, #9 |
+| 5. Maintenance | Dependencies patched (Next 14.2.35, PostCSS override, image optimizer blocked); `Table.tsx` and the dashboard page split up. Open: Next 15.5 upgrade for the remaining Next advisories (the user's call); local git cleanup (needs the user). | #10 |
 
 ## Ground rules
 

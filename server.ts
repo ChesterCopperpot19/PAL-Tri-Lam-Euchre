@@ -62,6 +62,14 @@ async function main() {
       res.end(JSON.stringify(botStats()));
       return;
     }
+    // The app never uses next/image, so Next's image optimizer is attack surface
+    // with no upside (Next 14 has open advisories against it, including remote
+    // code execution). Refuse it outright.
+    if (req.url?.startsWith('/_next/image')) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not found');
+      return;
+    }
     // Defer URL parsing to Next; it handles WHATWG URL internally.
     handle(req, res);
   });
