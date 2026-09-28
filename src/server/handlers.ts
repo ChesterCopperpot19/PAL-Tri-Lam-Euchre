@@ -3,8 +3,9 @@ import type { Server, Socket } from 'socket.io';
 import { applyAction, createGame } from './engine/game';
 import { chooseBotAction } from './engine/bot';
 import { strongAction } from './bot-pool';
+import { flushRooms, loadRecentRooms, saveRoomSoon } from './room-store';
 import { redactState } from './engine/redact';
-import { roomManager, nextHostPlayerId, stripControlChars, Room } from './rooms';
+import { roomManager, nextHostPlayerId, stripControlChars, Room, RESTART_GRACE_MS } from './rooms';
 import {
   ClientToServerEvents,
   MatchRecord,
@@ -199,9 +200,17 @@ function broadcast(io: IO, room: Room) {
   scheduleAutoNextHand(io, room);
   // Auto-play for an absent/idle human so the game never freezes on their turn.
   scheduleHumanTurnTimer(io, room);
+  // Keep a durable copy so a deploy or restart doesn't end the game.
+  if (roomManager.get(room.code) === room) saveRoomSoon(room);
   // Record the finished game for all-time stats (exactly once).
   if (room.state.phase === 'GAME_OVER' && !room.statsRecorded) {
     room.statsRecorded = true;
+    // Save the room now (not debounced), so a restart can't restore it with
+    // statsRecorded unset and record the same game twice.
+    if (roomManager.get(room.code) === room) {
+      saveRoomSoon(room);
+      void flushRooms();
+    }
     try {
       const record = buildMatchRecord(room);
       // Fire-and-forget: persistence shouldn't block the broadcast.
@@ -413,6 +422,11 @@ function scheduleHumanTurnTimer(io: IO, room: Room) {
   if (room.state.sittingOut.includes(turnSeat)) return;
   if (seated.socketId) return; // connected human → unlimited time, no auto-play
 
+  // Just after a restart everyone is "disconnected" while their browsers
+  // reconnect; give them the restart grace before playing for them.
+  const sinceRestore = room.restoredAt ? Date.now() - room.restoredAt : Infinity;
+  const wait = Math.max(DISCONNECTED_TURN_MS, RESTART_GRACE_MS - sinceRestore);
+
   room.turnTimer = setTimeout(() => {
     room.turnTimer = null;
     if (!roomManager.get(room.code)) return; // room gone
@@ -433,7 +447,7 @@ function scheduleHumanTurnTimer(io: IO, room: Room) {
       // eslint-disable-next-line no-console
       console.error(`auto-play (absent human) failed in room ${room.code}:`, msg);
     });
-  }, DISCONNECTED_TURN_MS);
+  }, wait);
 }
 
 function makeBotName(usedNames: Set<string>): string {
@@ -972,4 +986,26 @@ export function attachHandlers(io: IO) {
       }
     });
   });
+}
+
+/**
+ * Bring back the rooms saved before a restart (call once at boot, before the
+ * server accepts connections). Broadcasting each one re-arms its timers the
+ * normal way: bots resume, a finished hand advances, and absent players get the
+ * restart grace before anyone plays for them.
+ */
+export async function restoreRooms(io: IO): Promise<number> {
+  let n = 0;
+  try {
+    for (const saved of await loadRecentRooms()) {
+      const room = roomManager.restore(saved);
+      if (!room) continue;
+      n++;
+      broadcast(io, room);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('could not restore rooms:', (e as Error).message);
+  }
+  return n;
 }
