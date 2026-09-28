@@ -3,6 +3,18 @@
 Written 2026-09-27 for a fresh Claude Code session opened in `/Users/bryanrohm/Documents/Euchre`.
 Kickoff message: **"Read docs/plans/hand-analyzer-roadmap.md and start Phase 0."**
 
+## Status (2026-09-28)
+
+| Phase | State | PRs |
+| --- | --- | --- |
+| 0. Setup and CI | Done | #2 |
+| 1. Phone table | Done, live | #3 |
+| 2. Hand analyzer | Done, live | #4 |
+| 3. Strong bot and fair grading | Done, live. Beats the old bot by +0.14 points/hand on 2,000 duplicate deals; ~60 sampled deals per decision on Render (`/api/bot-stats`). | #5, #6 |
+| 3b. Decision-quality stats | Done, live: profile Decisions tab and a dashboard ranking, approved by the user once fair grading existed. | #7 |
+| 4. Durable rooms | Merged; live mid-game deploy test under way | #8 |
+| 5. Maintenance | Not started | |
+
 ## Ground rules
 
 1. **Merging to `main` deploys the live site.** Render auto-deploys `main` in about two minutes. Never merge without the user's explicit go-ahead for that specific PR.
