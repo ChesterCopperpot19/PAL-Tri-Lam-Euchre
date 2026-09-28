@@ -73,6 +73,7 @@ export function dealHand(state: GameState): GameState {
     phase: 'BIDDING_1',
     hands,
     kitty,
+    dealerDiscard: null,
     upcard,
     upcardTaken: false,
     trump: null,
@@ -290,6 +291,7 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
       let s: GameState = {
         ...state,
         hands: { ...state.hands, [state.dealer]: newHand },
+        dealerDiscard: dealerHand.find((c) => c.id === action.cardId)!,
         phase: 'PLAYING',
         turn: next(state.dealer),
       };

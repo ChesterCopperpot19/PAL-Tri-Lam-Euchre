@@ -396,4 +396,5 @@ export const _internal = {
   hasBothBowers,
   chooseLead,
   chooseFollow,
+  chooseDealerDiscard,
 };
