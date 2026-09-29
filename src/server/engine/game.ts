@@ -1,4 +1,4 @@
-import { buildDeck, mulberry32, shuffle } from './deck';
+import { buildDeck, mulberry32, secureShuffle, shuffle } from './deck';
 import { effectiveSuit, legalPlays, trickWinner } from './rules';
 import {
   Action,
@@ -38,7 +38,7 @@ export function createGame(): GameState {
     lastHand: null,
     history: [],
     bidLog: [],
-    seed: Math.floor(Math.random() * 0xffffffff),
+    seed: null,
   };
 }
 
@@ -57,8 +57,10 @@ function advanceTurn(state: GameState, from: SeatIndex): SeatIndex {
 
 /** Deal: 5 cards to each of 4 seats, plus 4-card kitty with top card flipped as upcard. */
 export function dealHand(state: GameState): GameState {
-  const rand = mulberry32(state.seed);
-  const deck = shuffle(buildDeck(), rand);
+  // A numeric seed (tests, tournaments) gives a reproducible deal; live games
+  // leave it null and shuffle with the CSPRNG.
+  const deck =
+    state.seed == null ? secureShuffle(buildDeck()) : shuffle(buildDeck(), mulberry32(state.seed));
   const hands: Record<SeatIndex, Card[]> = emptyHands();
   let i = 0;
   for (const seat of SEATS) {
@@ -87,7 +89,7 @@ export function dealHand(state: GameState): GameState {
     lastHand: null,
     bidLog: [],
     turn: next(dealer),
-    seed: (Math.imul(state.seed, 1664525) + 1013904223) >>> 0, // re-seed for next deal
+    seed: state.seed == null ? null : (Math.imul(state.seed, 1664525) + 1013904223) >>> 0, // re-seed for next deal
   };
 }
 

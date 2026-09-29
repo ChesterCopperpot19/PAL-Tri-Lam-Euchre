@@ -140,7 +140,8 @@ export class RoomManager {
         s ? { ...s, socketId: null, disconnectedAt: s.isBot ? null : now } : null,
       ),
       spectators: [],
-      state: saved.state,
+      // Rooms saved before the CSPRNG shuffle carry a guessable seed; drop it.
+      state: { ...saved.state, seed: null },
       chatLog: saved.chatLog ?? [],
       rateLimit: new Map(),
       createdAt: saved.createdAt,

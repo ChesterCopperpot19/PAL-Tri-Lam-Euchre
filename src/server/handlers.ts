@@ -88,13 +88,25 @@ function logHandlerError(event: string, e: unknown) {
 
 // ---------------------------------------------------------------------------
 // Per-IP limiters. Keyed by client address (not socket id) so reconnecting
-// doesn't reset the budget. Render sits behind a proxy → honour X-Forwarded-For.
+// doesn't reset the budget. On Render, traffic arrives through Cloudflare, which
+// sets True-Client-IP / CF-Connecting-IP itself (overwriting anything the client
+// sent). Anywhere else there is no trusted proxy, so forwarding headers are
+// ignored — otherwise a client could rotate them to dodge every limit.
 // ---------------------------------------------------------------------------
 
+const BEHIND_RENDER = !!process.env.RENDER;
+
+function header(socket: S, name: string): string | undefined {
+  const v = socket.handshake.headers[name];
+  return (Array.isArray(v) ? v[0] : v)?.trim() || undefined;
+}
+
 function clientIp(socket: S): string {
-  const xff = socket.handshake.headers['x-forwarded-for'];
-  const first = (Array.isArray(xff) ? xff[0] : xff)?.split(',')[0]?.trim();
-  return first || socket.handshake.address || 'unknown';
+  if (BEHIND_RENDER) {
+    const ip = header(socket, 'true-client-ip') ?? header(socket, 'cf-connecting-ip');
+    if (ip) return ip;
+  }
+  return socket.handshake.address || 'unknown';
 }
 
 class WindowLimiter {
