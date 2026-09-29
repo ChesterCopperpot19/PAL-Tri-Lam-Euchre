@@ -412,3 +412,30 @@ describe('input hardening', () => {
     ).toThrow(/invalid suit/);
   });
 });
+
+describe('engine: shuffle', () => {
+  const ids = (s: ReturnType<typeof dealHand>) =>
+    [0, 1, 2, 3].flatMap((i) => s.hands[i as 0 | 1 | 2 | 3].map((c) => c.id)).concat(s.kitty.map((c) => c.id));
+
+  it('live games carry no seed and deal a full, distinct 24-card deck', () => {
+    const g = createGame();
+    expect(g.seed).toBeNull();
+    const d = dealHand(g);
+    expect(d.seed).toBeNull();
+    const all = ids(d);
+    expect(all).toHaveLength(24);
+    expect(new Set(all).size).toBe(24);
+  });
+
+  it('live deals differ from one another', () => {
+    const deals = new Set(Array.from({ length: 20 }, () => ids(dealHand(createGame())).join()));
+    expect(deals.size).toBe(20);
+  });
+
+  it('a numeric seed still reproduces the same deal', () => {
+    const a = dealHand({ ...createGame(), seed: 42 });
+    const b = dealHand({ ...createGame(), seed: 42 });
+    expect(ids(a)).toEqual(ids(b));
+    expect(a.seed).not.toBe(42);
+  });
+});

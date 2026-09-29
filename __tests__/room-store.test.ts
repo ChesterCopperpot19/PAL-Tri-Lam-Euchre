@@ -41,7 +41,8 @@ describe('durable rooms', () => {
     const room = rm.restore(saved)!;
     expect(room).not.toBeNull();
     expect(rm.get(before.code)).toBe(room);
-    expect(room.state).toEqual(before.state); // hands, trick, turn, seed, discard...
+    // hands, trick, turn, discard... — but a saved seed is dropped so later deals use the CSPRNG
+    expect(room.state).toEqual({ ...before.state, seed: null });
     expect(room.seats[0]).toMatchObject({ playerId: 'p0', token: 'tok-ann', socketId: null, isBot: false });
     expect(room.seats[0]!.disconnectedAt).not.toBeNull();
     expect(room.seats[1]).toMatchObject({ isBot: true, disconnectedAt: null });

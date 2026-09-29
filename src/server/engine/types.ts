@@ -115,8 +115,9 @@ export type GameState = {
   history: HandSummary[];
   /** Bidding actions for the CURRENT hand (reset each deal; for hand-level stats). */
   bidLog: BidEntry[];
-  /** Random seed used for shuffling — kept for tests/replay. */
-  seed: number;
+  /** Seed for a reproducible shuffle (tests/replay). Null in live games, which
+   *  shuffle with the CSPRNG instead. */
+  seed: number | null;
 };
 
 export type Action =
